@@ -1,0 +1,75 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Android SDK уже є на раннері GitHub — лише доставляємо платформу 36.
+      - name: Install SDK 36
+        run: |
+          SDKM=$(ls -d $ANDROID_HOME/cmdline-tools/*/bin | sort -V | tail -1)/sdkmanager
+          yes | $SDKM --licenses > /dev/null || true
+          $SDKM "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: 8.14.3
+
+      # Ключ підпису з GitHub Secrets (необов'язково). Без нього — debug-ключ.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.SVITLO_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/svitlo.jks"
+            echo "SVITLO_KEYSTORE=$RUNNER_TEMP/svitlo.jks" >> $GITHUB_ENV
+          fi
+
+      - name: Build
+        env:
+          SVITLO_STORE_PASSWORD: ${{ secrets.SVITLO_STORE_PASSWORD }}
+          SVITLO_KEY_PASSWORD: ${{ secrets.SVITLO_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log || {
+            echo '### Build errors' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E '^e: |error:|What went wrong|^> |ERROR:' build.log | head -60 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+
+      - name: Name APK
+        run: |
+          V=$(grep versionName app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+          echo "V=$V" >> $GITHUB_ENV
+          cp app/build/outputs/apk/release/app-release.apk svitlo.apk
+          cp app/build/outputs/apk/release/app-release.apk svitlo-$V.apk
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: svitlo-${{ env.V }}
+          path: svitlo-${{ env.V }}.apk
+
+      # Стале посилання: /releases/latest/download/svitlo.apk завжди веде на останню збірку
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$V-${{ github.run_number }}" svitlo.apk \
+            --title "Світло $V" --notes "Збірка ${GITHUB_SHA::7}" --latest
