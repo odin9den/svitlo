@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/day"
+        android:layout_width="96dp"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:textColor="@color/text"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:id="@+id/bar"
+        android:layout_width="0dp"
+        android:layout_height="12dp"
+        android:layout_weight="1"
+        android:background="@drawable/pill"
+        android:orientation="horizontal">
+
+        <View
+            android:id="@+id/bar_on"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <View
+            android:id="@+id/bar_rest"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/value"
+        android:layout_width="92dp"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="end"
+        android:maxLines="1"
+        android:textColor="@color/text"
+        android:textSize="14sp" />
+</LinearLayout>
