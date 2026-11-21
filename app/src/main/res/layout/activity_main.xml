@@ -448,6 +448,15 @@
                     android:textColor="@color/text"
                     android:textSize="15sp" />
 
+                <Switch
+                    android:id="@+id/reminder_sound"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="Звук нагадувань"
+                    android:textColor="@color/text"
+                    android:textSize="15sp" />
+
                 <Button
                     android:id="@+id/battery"
                     style="?android:attr/borderlessButtonStyle"

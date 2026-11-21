@@ -20,6 +20,7 @@ object Store {
     fun leadMinutes(ctx: Context) = p(ctx).getInt("lead_min", 30)
     fun notifyChanges(ctx: Context) = p(ctx).getBoolean("notify_changes", true)
     fun quietNight(ctx: Context) = p(ctx).getBoolean("quiet_night", true)
+    fun reminderSound(ctx: Context) = p(ctx).getBoolean("reminder_sound", true)
     fun setBool(ctx: Context, key: String, v: Boolean) = p(ctx).edit().putBoolean(key, v).apply()
     fun setLead(ctx: Context, min: Int) = p(ctx).edit().putInt("lead_min", min).apply()
 

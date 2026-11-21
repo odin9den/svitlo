@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
         sw(R.id.remind_on, "remind_on", Store.remindOn(this))
         sw(R.id.notify_changes, "notify_changes", Store.notifyChanges(this))
         sw(R.id.quiet_night, "quiet_night", Store.quietNight(this))
+        sw(R.id.reminder_sound, "reminder_sound", Store.reminderSound(this))
 
         val group = findViewById<RadioGroup>(R.id.lead)
         group.check(
