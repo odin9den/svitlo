@@ -14,6 +14,15 @@ object Store {
     fun saveAddress(ctx: Context, street: String, house: String) =
         p(ctx).edit().putString("street", street).putString("house", house).apply()
 
+    // Нагадування
+    fun remindOff(ctx: Context) = p(ctx).getBoolean("remind_off", true)
+    fun remindOn(ctx: Context) = p(ctx).getBoolean("remind_on", false)
+    fun leadMinutes(ctx: Context) = p(ctx).getInt("lead_min", 30)
+    fun notifyChanges(ctx: Context) = p(ctx).getBoolean("notify_changes", true)
+    fun quietNight(ctx: Context) = p(ctx).getBoolean("quiet_night", true)
+    fun setBool(ctx: Context, key: String, v: Boolean) = p(ctx).edit().putBoolean(key, v).apply()
+    fun setLead(ctx: Context, min: Int) = p(ctx).edit().putInt("lead_min", min).apply()
+
     fun setError(ctx: Context, msg: String?) = p(ctx).edit().putString("error", msg).apply()
 
     fun save(ctx: Context, s: Snapshot) {

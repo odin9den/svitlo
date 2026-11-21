@@ -21,9 +21,11 @@ import java.util.concurrent.TimeUnit
 object Refresher {
     /** Забрати свіжі дані з ДТЕК і перемалювати все. */
     suspend fun refresh(ctx: Context): Result<Snapshot> = withContext(Dispatchers.IO) {
+        val old = Store.load(ctx)
         val r = runCatching { DtekClient.fetch(ctx, Store.street(ctx), Store.house(ctx), Store.group(ctx)) }
         r.onSuccess {
             Store.save(ctx, it)
+            runCatching { Reminders.checkChanges(ctx, old, it) }
             Store.saveHistory(ctx, Stats.dayTotals(it))
             Store.setError(ctx, null)
         }.onFailure {
@@ -53,6 +55,7 @@ object Renderer {
         Notifier.post(ctx, snap, now)
         ScheduleWidget.updateAll(ctx, snap, now)
         scheduleTick(ctx, StatusCalc.of(snap, now).until)
+        runCatching { Reminders.schedule(ctx, snap, now) }
     }
 
     /** Будильник на момент зміни стану, щоб сповіщення перемкнулось вчасно навіть офлайн. */

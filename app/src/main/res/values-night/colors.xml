@@ -13,4 +13,5 @@
 
     <color name="badge_bg">#FFC83D</color>
     <color name="badge_text">#121418</color>
+    <color name="badge_soft">#24282F</color>
 </resources>

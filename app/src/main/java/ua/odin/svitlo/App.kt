@@ -17,6 +17,7 @@ class App : Application() {
             previous?.uncaughtException(t, e)
         }
         Notifier.ensureChannel(this)
+        Reminders.ensureChannel(this)
         Refresher.schedulePeriodic(this)
     }
 }

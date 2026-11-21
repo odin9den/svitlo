@@ -16,6 +16,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioGroup
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -97,6 +99,13 @@ class MainActivity : ComponentActivity() {
         }
         battery.setOnClickListener { askBatteryExemption() }
 
+        findViewById<View>(R.id.share).setOnClickListener {
+            val snap = Store.load(this)
+            if (snap == null) Toast.makeText(this, "Графік ще не завантажено", Toast.LENGTH_SHORT).show()
+            else Share.open(this, snap)
+        }
+        bindReminderSettings()
+
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -125,6 +134,34 @@ class MainActivity : ComponentActivity() {
             Refresher.refresh(this@MainActivity)
             swipe.isRefreshing = false
             show()
+        }
+    }
+
+    private fun bindReminderSettings() {
+        fun sw(id: Int, key: String, value: Boolean) {
+            val v = findViewById<Switch>(id)
+            v.isChecked = value
+            v.setOnCheckedChangeListener { _, on ->
+                Store.setBool(this, key, on)
+                Renderer.renderAll(this)
+            }
+        }
+        sw(R.id.remind_off, "remind_off", Store.remindOff(this))
+        sw(R.id.remind_on, "remind_on", Store.remindOn(this))
+        sw(R.id.notify_changes, "notify_changes", Store.notifyChanges(this))
+        sw(R.id.quiet_night, "quiet_night", Store.quietNight(this))
+
+        val group = findViewById<RadioGroup>(R.id.lead)
+        group.check(
+            when (Store.leadMinutes(this)) {
+                15 -> R.id.lead15
+                60 -> R.id.lead60
+                else -> R.id.lead30
+            },
+        )
+        group.setOnCheckedChangeListener { _, id ->
+            Store.setLead(this, if (id == R.id.lead15) 15 else if (id == R.id.lead60) 60 else 30)
+            Renderer.renderAll(this)
         }
     }
 
