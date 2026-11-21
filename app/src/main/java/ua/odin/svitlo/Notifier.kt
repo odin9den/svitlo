@@ -101,7 +101,23 @@ object Notifier {
         }
         // Запит на Live Update (те саме, що NotificationCompat.setRequestPromotedOngoing).
         b.addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
-        return b.build()
+        val n = b.build()
+        logPromotion(ctx, n)
+        return n
+    }
+
+    /** Діагностика Live Update через reflection: ці методи є не в усіх версіях Android 16. */
+    private fun logPromotion(ctx: Context, n: Notification) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        fun call(target: Any, name: String) =
+            runCatching { target.javaClass.getMethod(name).invoke(target).toString() }.getOrElse { "n/a" }
+        android.util.Log.i(
+            "Svitlo",
+            "promotion: sdk=${Build.VERSION.SDK_INT} " +
+                "sdkFull=${runCatching { Build.VERSION::class.java.getField("SDK_INT_FULL").get(null) }.getOrNull()} " +
+                "hasPromotable=${call(n, "hasPromotableCharacteristics")} " +
+                "canPost=${call(nm, "canPostPromotedNotifications")}",
+        )
     }
 
     /** Android 15 і старше: звичайне постійне сповіщення з картинкою шкали. */

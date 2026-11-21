@@ -4,6 +4,12 @@ set -x
 P=ua.odin.svitlo
 mkdir -p shots
 shot() { adb exec-out screencap -p > "shots/$1.png"; }
+# Натиснути на елемент із текстом (через дамп інтерфейсу)
+tap_text() {
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null
+  b=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -F "text=\"$1" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
+  [ -n "$b" ] && set -- $b && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
+}
 
 adb shell settings put system screen_off_timeout 1800000
 adb install -r svitlo.apk
@@ -22,6 +28,9 @@ for i in 2 3 4; do
   shot 0$i-scroll
 done
 adb shell input swipe 540 1900 540 300 400; sleep 2; shot 05-bottom
+tap_text "Адреса й налаштування"; sleep 2
+adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05b-settings
+adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
 
 # 3. Шторка сповіщень із постійним сповіщенням
 adb shell cmd statusbar expand-notifications; sleep 3; shot 06-shade
@@ -42,4 +51,7 @@ adb shell dumpsys notification --noredact | grep -A3 "pkg=$P" > shots/notificati
 # 6. Журнали
 adb logcat -d -b crash > shots/crash.txt
 adb logcat -d | grep -iE "svitlo|AndroidRuntime|WebView" | tail -300 > shots/logcat.txt
+adb logcat -d -s Svitlo > shots/promotion.txt
+adb shell getprop ro.build.version.release_or_preview_display >> shots/promotion.txt
+adb shell getprop ro.build.version.sdk_full >> shots/promotion.txt
 exit 0

@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var settings: View
     private lateinit var settingsToggle: TextView
 
-    private val dayFmt = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.forLanguageTag("uk"))
+    private val dayFmt = DateTimeFormatter.ofPattern("EE, d MMMM", Locale.forLanguageTag("uk"))
     private val ticker = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
