@@ -45,7 +45,7 @@ jobs:
           SVITLO_KEY_PASSWORD: ${{ secrets.SVITLO_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          gradle assembleRelease --no-daemon 2>&1 | tee build.log || {
+          gradle assembleRelease bundleRelease --no-daemon 2>&1 | tee build.log || {
             echo '### Build errors' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             grep -E '^e: |error:|What went wrong|^> |ERROR:' build.log | head -60 >> $GITHUB_STEP_SUMMARY
@@ -59,11 +59,17 @@ jobs:
           echo "V=$V" >> $GITHUB_ENV
           cp app/build/outputs/apk/release/app-release.apk svitlo.apk
           cp app/build/outputs/apk/release/app-release.apk svitlo-$V.apk
+          cp app/build/outputs/bundle/release/app-release.aab svitlo-$V.aab
+          if [ -z "$SVITLO_KEYSTORE" ]; then
+            echo "⚠️ Секретів підпису немає — збірка підписана debug-ключем. Google Play такий AAB не прийме." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - uses: actions/upload-artifact@v5
         with:
           name: svitlo-${{ env.V }}
-          path: svitlo-${{ env.V }}.apk
+          path: |
+            svitlo-${{ env.V }}.apk
+            svitlo-${{ env.V }}.aab
 
       # Стале посилання: /releases/latest/download/svitlo.apk завжди веде на останню збірку
       - name: Publish release
@@ -71,5 +77,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$V-${{ github.run_number }}" svitlo.apk \
+          gh release create "v$V-${{ github.run_number }}" svitlo.apk "svitlo-$V.aab#svitlo-$V.aab (для Google Play)" \
             --title "Світло $V" --notes "Збірка ${GITHUB_SHA::7}" --latest

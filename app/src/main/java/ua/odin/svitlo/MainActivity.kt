@@ -1,7 +1,6 @@
 package ua.odin.svitlo
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -18,6 +17,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
@@ -58,6 +58,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        // Показуємо минулий збій лише один раз
+        val prefs = getSharedPreferences("svitlo", MODE_PRIVATE)
+        crashText = prefs.getString("crash", null)
+        prefs.edit().remove("crash").apply()
 
         swipe = findViewById(R.id.swipe)
         address = findViewById(R.id.address)
@@ -188,6 +192,12 @@ class MainActivity : ComponentActivity() {
                 if (isNotEmpty()) append("\n")
                 append("Не вдалося оновити: $err")
             }
+            crashText?.let {
+                if (isNotEmpty()) append("\n")
+                append("Попередній збій: ").append(it.lineSequence().take(4).joinToString(" | "))
+            }
+            if (isNotEmpty()) append("\n")
+            append("Неофіційний застосунок. Дані з сайту ДТЕК Київські електромережі.")
             val v = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
             if (v != null) append("\nверсія $v")
         }
@@ -233,7 +243,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val shortDay = DateTimeFormatter.ofPattern("EEEEEE, d.MM", Locale.forLanguageTag("uk"))
+    private var crashText: String? = null
+
+    private val shortDay = DateTimeFormatter.ofPattern("EE, d.MM", Locale.forLanguageTag("uk"))
 
     /** Картка «Скільки світла щодня»: 7 минулих днів + сьогодні + завтра. */
     private fun bindStats(snap: Snapshot?, today: LocalDate) {
@@ -283,10 +295,10 @@ class MainActivity : ComponentActivity() {
         findViewById<View>(R.id.stats_hint).visibility = if (days.size <= 2) View.VISIBLE else View.GONE
     }
 
-    @SuppressLint("BatteryLife")
+    /** Відкриває системний список оптимізації батареї (без обмеженого дозволу Google Play). */
     private fun askBatteryExemption() {
-        startActivity(
-            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")),
-        )
+        Toast.makeText(this, "Знайдіть «Світло» у списку й вимкніть для нього оптимізацію", Toast.LENGTH_LONG).show()
+        runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            .onFailure { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     }
 }
