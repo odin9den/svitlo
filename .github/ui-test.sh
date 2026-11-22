@@ -70,7 +70,9 @@ sleep 5
 adb shell dumpsys notification --noredact | grep -A3 "pkg=$P" > shots/notifications.txt
 
 # 6. Журнали
-adb logcat -d -b crash > shots/crash.txt
+# лише збої нашого застосунку (системні сервіси емулятора інколи падають самі)
+adb logcat -d -b crash > shots/crash-all.txt
+grep -q "Process: $P" shots/crash-all.txt && cp shots/crash-all.txt shots/crash.txt || : > shots/crash.txt
 adb logcat -d | grep -iE "svitlo|AndroidRuntime|WebView" | tail -300 > shots/logcat.txt
 adb logcat -d -s Svitlo > shots/svitlo-log.txt; cp shots/svitlo-log.txt shots/promotion.txt
 adb shell getprop ro.build.version.release_or_preview_display >> shots/promotion.txt

@@ -270,7 +270,7 @@ class MainActivity : ComponentActivity() {
         for (id in intArrayOf(R.id.today_card, R.id.tomorrow_card, R.id.stats_card, R.id.share, R.id.address)) {
             findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
         }
-        for (id in intArrayOf(R.id.hero_card, R.id.settings_toggle, R.id.extra_settings)) {
+        for (id in intArrayOf(R.id.hero_card, R.id.settings_toggle, R.id.extra_settings, R.id.legend)) {
             findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
         }
         if (!hasAddress) {
