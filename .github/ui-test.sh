@@ -46,10 +46,10 @@ done
 adb shell input swipe 540 1900 540 300 400; sleep 2; shot 05-bottom
 tap_text "Адреса й налаштування"; sleep 2
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05b-settings
-adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
-adb shell input swipe 540 600 540 1900 400; sleep 1
-tap_id house; sleep 3; shot 05d-house-dropdown
+tap_id house; sleep 4; shot 05d-house-dropdown
 adb shell input keyevent KEYCODE_BACK; sleep 1
+adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
+
 
 # 3. Шторка сповіщень із постійним сповіщенням
 adb shell cmd statusbar expand-notifications; sleep 3; shot 06-shade
