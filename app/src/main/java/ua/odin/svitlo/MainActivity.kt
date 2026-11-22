@@ -172,10 +172,18 @@ class MainActivity : ComponentActivity() {
             hideKeyboard()
             applyAddress(street.text.toString().trim(), parent.getItemAtPosition(pos) as String)
         }
-        house.setOnFocusChangeListener { _, focused -> if (focused && house.adapter != null) house.showDropDown() }
-        house.setOnClickListener { if (house.adapter != null) house.showDropDown() }
+        house.setOnFocusChangeListener { _, focused -> if (focused) openHouses() }
+        house.setOnClickListener { openHouses() }
 
         if (Store.street(this).isNotBlank()) loadHouses(Store.street(this), open = false)
+    }
+
+    private fun openHouses() {
+        val st = street.text.toString().trim()
+        when {
+            house.adapter != null && housesFor == st -> house.showDropDown()
+            st.isNotBlank() -> loadHouses(st, open = true)
+        }
     }
 
     private fun bindStreets() {

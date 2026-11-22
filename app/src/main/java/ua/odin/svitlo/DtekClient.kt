@@ -1,6 +1,8 @@
 package ua.odin.svitlo
 
 import android.content.Context
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -27,7 +29,12 @@ object DtekClient {
     private const val MARKER = "DisconSchedule.fact = "
 
     /** Сторінка ДТЕК і відповідь getHomeNum для вулиці (спершу прямий запит, потім WebView). */
-    suspend fun load(ctx: Context, street: String): Pair<String, String?> {
+    /** Запити до ДТЕК — суворо по одному: паралельні ламають сесію й CSRF-токен. */
+    private val lock = Mutex()
+
+    suspend fun load(ctx: Context, street: String): Pair<String, String?> = lock.withLock { loadNow(ctx, street) }
+
+    private suspend fun loadNow(ctx: Context, street: String): Pair<String, String?> {
         val direct = runCatching { httpFetch(street) }
             .onFailure { log("http failed: ${it.message}") }.getOrNull()
         val pageOk = direct != null && direct.first.contains(MARKER)
