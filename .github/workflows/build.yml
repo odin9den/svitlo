@@ -34,9 +34,20 @@ jobs:
       - name: Signing key
         env:
           KEYSTORE_B64: ${{ secrets.SVITLO_KEYSTORE_B64 }}
+          STORE_PW: ${{ secrets.SVITLO_STORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/svitlo.jks"
+            # прибираємо випадкові пробіли й переноси, що могли потрапити при вставці
+            printf %s "$KEYSTORE_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/svitlo.jks" || true
+            PW=$(printf %s "$STORE_PW" | tr -d '\r\n' | sed 's/^ *//;s/ *$//')
+            echo "### Ключ підпису" >> $GITHUB_STEP_SUMMARY
+            echo "- розмір файлу ключа: $(wc -c < "$RUNNER_TEMP/svitlo.jks") байт (очікується ~4–5 тис.)" >> $GITHUB_STEP_SUMMARY
+            echo "- довжина пароля: ${#PW} символів (очікується 24)" >> $GITHUB_STEP_SUMMARY
+            if keytool -list -keystore "$RUNNER_TEMP/svitlo.jks" -storepass "$PW" > kt.txt 2>&1; then
+              echo "- ключ відкривається паролем ✓ ($(grep -c PrivateKeyEntry kt.txt) ключ)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ⚠️ ключ НЕ відкривається: $(grep -iE 'error|exception' kt.txt | head -1 | sed 's/keytool error: //')" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "SVITLO_KEYSTORE=$RUNNER_TEMP/svitlo.jks" >> $GITHUB_ENV
           fi
 
@@ -46,10 +57,12 @@ jobs:
           SVITLO_KEY_PASSWORD: ${{ secrets.SVITLO_KEY_PASSWORD }}
         run: |
           set -o pipefail
+          export SVITLO_STORE_PASSWORD=$(printf %s "$SVITLO_STORE_PASSWORD" | tr -d '\r\n' | sed 's/^ *//;s/ *$//')
+          export SVITLO_KEY_PASSWORD=$(printf %s "$SVITLO_KEY_PASSWORD" | tr -d '\r\n' | sed 's/^ *//;s/ *$//')
           gradle assembleRelease bundleRelease --no-daemon 2>&1 | tee build.log || {
             echo '### Build errors' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -E '^e: |error:|What went wrong|^> |ERROR:' build.log | head -60 >> $GITHUB_STEP_SUMMARY
+            grep -E '^e: |error:|What went wrong|^> |ERROR:|Caused by|password|Keystore|keystore' build.log | grep -v '^> Task'  | head -60 >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit 1
           }
