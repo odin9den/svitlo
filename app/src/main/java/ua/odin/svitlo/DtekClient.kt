@@ -28,9 +28,21 @@ object DtekClient {
 
     /** Сторінка ДТЕК і відповідь getHomeNum для вулиці (спершу прямий запит, потім WebView). */
     suspend fun load(ctx: Context, street: String): Pair<String, String?> {
-        val direct = runCatching { httpFetch(street) }.getOrNull()
-        return if (direct != null && direct.first.contains(MARKER)) direct else WebFetcher.fetch(ctx, street)
+        val direct = runCatching { httpFetch(street) }
+            .onFailure { log("http failed: ${it.message}") }.getOrNull()
+        val pageOk = direct != null && direct.first.contains(MARKER)
+        val ajaxOk = street.isBlank() || hasData(direct?.second)
+        log("http: page=$pageOk ajax=$ajaxOk street='$street' ajaxLen=${direct?.second?.length}")
+        if (pageOk && ajaxOk) return direct!!
+        val web = WebFetcher.fetch(ctx, street)
+        log("webview: ajax=${hasData(web.second)} ajaxLen=${web.second?.length}")
+        return web
     }
+
+    private fun hasData(ajax: String?) =
+        ajax != null && runCatching { JSONObject(ajax).optJSONObject("data")?.length() ?: 0 }.getOrDefault(0) > 0
+
+    private fun log(msg: String) = android.util.Log.i("Svitlo", msg)
 
     suspend fun fetch(ctx: Context, street: String, house: String, fallbackGroup: String): Snapshot {
         val (page, ajax) = load(ctx, street)

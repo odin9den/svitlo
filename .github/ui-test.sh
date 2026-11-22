@@ -70,7 +70,7 @@ adb shell dumpsys notification --noredact | grep -A3 "pkg=$P" > shots/notificati
 # 6. Журнали
 adb logcat -d -b crash > shots/crash.txt
 adb logcat -d | grep -iE "svitlo|AndroidRuntime|WebView" | tail -300 > shots/logcat.txt
-adb logcat -d -s Svitlo > shots/promotion.txt
+adb logcat -d -s Svitlo > shots/svitlo-log.txt; cp shots/svitlo-log.txt shots/promotion.txt
 adb shell getprop ro.build.version.release_or_preview_display >> shots/promotion.txt
 adb shell getprop ro.build.version.sdk_full >> shots/promotion.txt
 exit 0
