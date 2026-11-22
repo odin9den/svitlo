@@ -270,18 +270,15 @@ class MainActivity : ComponentActivity() {
         for (id in intArrayOf(R.id.today_card, R.id.tomorrow_card, R.id.stats_card, R.id.share, R.id.address)) {
             findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
         }
+        for (id in intArrayOf(R.id.hero_card, R.id.settings_toggle, R.id.extra_settings)) {
+            findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
+        }
         if (!hasAddress) {
-            tint(statusDot, R.color.on)
-            statusLabel.text = "ПОЧНІМО"
-            bigTime.text = "Ваша адреса"
-            bigTime.textSize = 40f
-            caption.text = "Оберіть вулицю й будинок нижче — графік ДТЕК підтягнеться автоматично."
+            // Новий користувач: лише поля вулиці й будинку
             settings.visibility = View.VISIBLE
-            settingsToggle.text = "Адреса й налаштування  ▴"
             info.text = "Неофіційний застосунок. Дані з сайту ДТЕК Київські електромережі."
             return
         }
-        bigTime.textSize = 72f
 
         val snap = Store.load(this)
         val now = Instant.now()
