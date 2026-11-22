@@ -204,6 +204,7 @@
 
             <!-- Статистика -->
             <LinearLayout
+                android:id="@+id/stats_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -337,27 +338,36 @@
                     android:textColor="@color/text2"
                     android:textSize="13sp" />
 
-                <EditText
+                <AutoCompleteTextView
                     android:id="@+id/street"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
                     android:layout_marginTop="10dp"
                     android:background="@drawable/field_bg"
-                    android:hint="вул. Хрещатик"
-                    android:inputType="text"
+                    android:completionThreshold="2"
+                    android:dropDownVerticalOffset="6dp"
+                    android:hint="Почніть вводити назву вулиці"
+                    android:imeOptions="actionNext"
+                    android:inputType="textNoSuggestions"
+                    android:maxLines="1"
                     android:paddingStart="16dp"
                     android:paddingEnd="16dp"
                     android:textColor="@color/text"
                     android:textColorHint="@color/text2" />
 
-                <EditText
+                <AutoCompleteTextView
                     android:id="@+id/house"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
                     android:layout_marginTop="8dp"
                     android:background="@drawable/field_bg"
-                    android:hint="1"
-                    android:inputType="text"
+                    android:completionThreshold="1"
+                    android:dropDownVerticalOffset="6dp"
+                    android:enabled="false"
+                    android:hint="Спершу оберіть вулицю"
+                    android:imeOptions="actionDone"
+                    android:inputType="textNoSuggestions"
+                    android:maxLines="1"
                     android:paddingStart="16dp"
                     android:paddingEnd="16dp"
                     android:textColor="@color/text"

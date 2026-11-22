@@ -10,14 +10,30 @@ tap_text() {
   b=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -F "text=\"$1" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
   [ -n "$b" ] && set -- $b && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
 }
+# Натиснути на поле за його id
+tap_id() {
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null
+  b=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -F "resource-id=\"$P:id/$1\"" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
+  [ -n "$b" ] && set -- $b && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
+}
 
 adb shell settings put system screen_off_timeout 1800000
 adb install -r svitlo.apk
 adb shell pm grant $P android.permission.POST_NOTIFICATIONS
 adb logcat -c
 
-# 1. Перший запуск: застосунок сам завантажує графік з сайту ДТЕК
+# 0. Перший запуск без адреси: порожній стан і підказки вулиць
 adb shell am start -W -n $P/.MainActivity
+sleep 30
+shot 00-empty
+tap_id street; sleep 1
+adb shell input text "1-"; sleep 3
+shot 00b-street-dropdown
+adb shell input keyevent KEYCODE_BACK; sleep 1
+
+# 1. Задаємо адресу і чекаємо графік з сайту ДТЕК
+adb shell am force-stop $P
+adb shell "am start -W -n $P/.MainActivity --es street 'вул. Хрещатик' --es house 1"
 sleep 45
 shot 01-main
 
@@ -31,6 +47,9 @@ adb shell input swipe 540 1900 540 300 400; sleep 2; shot 05-bottom
 tap_text "Адреса й налаштування"; sleep 2
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05b-settings
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
+adb shell input swipe 540 600 540 1900 400; sleep 1
+tap_id house; sleep 3; shot 05d-house-dropdown
+adb shell input keyevent KEYCODE_BACK; sleep 1
 
 # 3. Шторка сповіщень із постійним сповіщенням
 adb shell cmd statusbar expand-notifications; sleep 3; shot 06-shade

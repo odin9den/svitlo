@@ -1,6 +1,7 @@
 package ua.odin.svitlo
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.net.CookieHandler
@@ -25,15 +26,44 @@ object DtekClient {
 
     private const val MARKER = "DisconSchedule.fact = "
 
-    /** Спершу прямий запит; якщо Imperva не пустила — невидимий WebView. */
-    suspend fun fetch(ctx: Context, street: String, house: String, fallbackGroup: String): Snapshot {
+    /** Сторінка ДТЕК і відповідь getHomeNum для вулиці (спершу прямий запит, потім WebView). */
+    suspend fun load(ctx: Context, street: String): Pair<String, String?> {
         val direct = runCatching { httpFetch(street) }.getOrNull()
-        val (page, ajax) = if (direct != null && direct.first.contains(MARKER)) {
-            direct
-        } else {
-            WebFetcher.fetch(ctx, street)
-        }
+        return if (direct != null && direct.first.contains(MARKER)) direct else WebFetcher.fetch(ctx, street)
+    }
+
+    suspend fun fetch(ctx: Context, street: String, house: String, fallbackGroup: String): Snapshot {
+        val (page, ajax) = load(ctx, street)
+        runCatching { Store.saveStreets(ctx, streets(page)) }
         return build(page, ajax, house, fallbackGroup)
+    }
+
+    /** Лише оновити список вулиць (коли адресу ще не вказано). */
+    suspend fun refreshStreets(ctx: Context) {
+        val (page, _) = load(ctx, "")
+        Store.saveStreets(ctx, streets(page))
+    }
+
+    /** Будинки вулиці у тому вигляді, як їх показує сайт ДТЕК («4/к.15»). */
+    suspend fun houses(ctx: Context, street: String): List<String> {
+        val (_, ajax) = load(ctx, street)
+        val data = ajax?.let { runCatching { JSONObject(it).optJSONObject("data") }.getOrNull() }
+            ?: error("ДТЕК не віддав список будинків")
+        return data.keys().asSequence().toList().sortedWith(houseOrder)
+    }
+
+    private val houseOrder = Comparator<String> { a, b ->
+        val na = a.takeWhile { it.isDigit() }.toIntOrNull() ?: Int.MAX_VALUE
+        val nb = b.takeWhile { it.isDigit() }.toIntOrNull() ?: Int.MAX_VALUE
+        if (na != nb) na.compareTo(nb) else a.compareTo(b)
+    }
+
+    fun streets(page: String): List<String> {
+        val m = "DisconSchedule.streets = "
+        val i = page.indexOf(m)
+        if (i < 0) return emptyList()
+        val arr = JSONTokener(page.substring(i + m.length)).nextValue() as? JSONArray ?: return emptyList()
+        return (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }
     }
 
     private fun httpFetch(street: String): Pair<String, String?> {
@@ -76,6 +106,7 @@ object DtekClient {
             val g = data.getJSONObject(key).optJSONObject(group) ?: continue
             days[key.toLong()] = (1..24).joinToString(",") { g.optString(it.toString(), "?") }
         }
+        if (group.isBlank()) error("Будинок не знайдено в базі ДТЕК — оберіть адресу зі списку")
         if (days.isEmpty()) error("Черги $group немає в графіку ДТЕК")
 
         return Snapshot(group, days, fact.str("update"), System.currentTimeMillis(), outage)

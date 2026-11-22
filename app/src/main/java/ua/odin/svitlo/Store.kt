@@ -6,13 +6,29 @@ import org.json.JSONObject
 object Store {
     private fun p(ctx: Context) = ctx.getSharedPreferences("svitlo", Context.MODE_PRIVATE)
 
-    fun street(ctx: Context): String = p(ctx).getString("street", null) ?: "вул. Хрещатик"
-    fun house(ctx: Context): String = p(ctx).getString("house", null) ?: "1"
-    fun group(ctx: Context): String = p(ctx).getString("group", null) ?: "GPV1.1"
+    fun street(ctx: Context): String = p(ctx).getString("street", null).orEmpty()
+    fun house(ctx: Context): String = p(ctx).getString("house", null).orEmpty()
+    fun group(ctx: Context): String = p(ctx).getString("group", null).orEmpty()
+    fun hasAddress(ctx: Context) = street(ctx).isNotBlank() && house(ctx).isNotBlank()
     fun error(ctx: Context): String? = p(ctx).getString("error", null)
 
-    fun saveAddress(ctx: Context, street: String, house: String) =
-        p(ctx).edit().putString("street", street).putString("house", house).apply()
+    /** Нова адреса: старий графік і черга стосуються іншого будинку — прибираємо їх. */
+    fun saveAddress(ctx: Context, street: String, house: String) {
+        if (street == street(ctx) && house == house(ctx)) return
+        p(ctx).edit().putString("street", street).putString("house", house)
+            .remove("snapshot").remove("group").remove("history").remove("error").apply()
+    }
+
+    // Список вулиць ДТЕК — у файлі, бо це кілька тисяч назв
+    fun saveStreets(ctx: Context, list: List<String>) {
+        if (list.size < 100) return
+        java.io.File(ctx.filesDir, "streets.json").writeText(org.json.JSONArray(list).toString())
+    }
+
+    fun streets(ctx: Context): List<String> = runCatching {
+        val a = org.json.JSONArray(java.io.File(ctx.filesDir, "streets.json").readText())
+        (0 until a.length()).map { a.getString(it) }
+    }.getOrDefault(emptyList())
 
     // Нагадування
     fun remindOff(ctx: Context) = p(ctx).getBoolean("remind_off", true)

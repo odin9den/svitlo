@@ -39,6 +39,10 @@ object Notifier {
 
     fun post(ctx: Context, snap: Snapshot?, now: Instant) {
         if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
+        if (!Store.hasAddress(ctx)) {
+            ctx.getSystemService(NotificationManager::class.java).cancel(ID)
+            return
+        }
         ensureChannel(ctx)
         val st = StatusCalc.of(snap, now)
         val sched = snap?.let { Schedule.from(it) } ?: Schedule(emptyMap())

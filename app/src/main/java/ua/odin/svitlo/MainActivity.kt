@@ -13,8 +13,10 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.EditText
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.Switch
@@ -24,7 +26,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -39,8 +43,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var bigTime: TextView
     private lateinit var caption: TextView
     private lateinit var info: TextView
-    private lateinit var street: EditText
-    private lateinit var house: EditText
+    private lateinit var street: AutoCompleteTextView
+    private lateinit var house: AutoCompleteTextView
+    private var housesFor: String? = null
     private lateinit var battery: Button
     private lateinit var settings: View
     private lateinit var settingsToggle: TextView
@@ -86,16 +91,25 @@ class MainActivity : ComponentActivity() {
         swipe.setProgressBackgroundColorSchemeColor(getColor(R.color.card))
         swipe.setOnRefreshListener { refresh() }
 
-        street.setText(Store.street(this))
-        house.setText(Store.house(this))
+        // Адреса з інтенту (використовує автотест на емуляторі)
+        val xs = intent.getStringExtra("street")
+        val xh = intent.getStringExtra("house")
+        if (!xs.isNullOrBlank() && !xh.isNullOrBlank()) Store.saveAddress(this, xs, xh)
+        setupAddress()
         settingsToggle.setOnClickListener {
             val open = settings.visibility != View.VISIBLE
             settings.visibility = if (open) View.VISIBLE else View.GONE
             settingsToggle.text = if (open) "Адреса й налаштування  ▴" else "Адреса й налаштування  ▾"
         }
         findViewById<Button>(R.id.save).setOnClickListener {
-            Store.saveAddress(this, street.text.toString().trim(), house.text.toString().trim())
-            refresh()
+            val st = street.text.toString().trim()
+            val h = house.text.toString().trim()
+            val known = Store.streets(this)
+            when {
+                st.isBlank() || h.isBlank() -> toast("Оберіть вулицю й будинок зі списку")
+                known.isNotEmpty() && st !in known -> toast("Такої вулиці немає в базі ДТЕК — оберіть зі списку")
+                else -> applyAddress(st, h)
+            }
         }
         battery.setOnClickListener { askBatteryExemption() }
 
@@ -133,8 +147,75 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             Refresher.refresh(this@MainActivity)
             swipe.isRefreshing = false
+            if (street.adapter == null) bindStreets()
             show()
         }
+    }
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    // ---------- Адреса з підказками, як на сайті ДТЕК ----------
+
+    private fun setupAddress() {
+        street.setDropDownBackgroundResource(R.drawable.dropdown_bg)
+        house.setDropDownBackgroundResource(R.drawable.dropdown_bg)
+        street.setText(Store.street(this), false)
+        house.setText(Store.house(this), false)
+        bindStreets()
+
+        street.setOnItemClickListener { parent, _, pos, _ ->
+            val s = parent.getItemAtPosition(pos) as String
+            house.setText("", false)
+            loadHouses(s, open = true)
+        }
+        house.setOnItemClickListener { parent, _, pos, _ ->
+            hideKeyboard()
+            applyAddress(street.text.toString().trim(), parent.getItemAtPosition(pos) as String)
+        }
+        house.setOnFocusChangeListener { _, focused -> if (focused && house.adapter != null) house.showDropDown() }
+        house.setOnClickListener { if (house.adapter != null) house.showDropDown() }
+
+        if (Store.street(this).isNotBlank()) loadHouses(Store.street(this), open = false)
+    }
+
+    private fun bindStreets() {
+        val list = Store.streets(this)
+        if (list.isNotEmpty()) street.setAdapter(ArrayAdapter(this, R.layout.item_dropdown, list))
+    }
+
+    private fun loadHouses(s: String, open: Boolean) {
+        if (housesFor == s && house.adapter != null) {
+            if (open) house.showDropDown()
+            return
+        }
+        house.isEnabled = false
+        house.hint = "Завантажую будинки…"
+        lifecycleScope.launch {
+            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.houses(this@MainActivity, s) } }
+            house.isEnabled = true
+            house.hint = "Номер будинку"
+            r.onSuccess { list ->
+                housesFor = s
+                house.setAdapter(ArrayAdapter(this@MainActivity, R.layout.item_dropdown, list))
+                if (open) {
+                    house.requestFocus()
+                    house.showDropDown()
+                }
+            }.onFailure { toast("Не вдалося завантажити будинки: ${it.message}") }
+        }
+    }
+
+    private fun applyAddress(s: String, h: String) {
+        Store.saveAddress(this, s, h)
+        settings.visibility = View.GONE
+        settingsToggle.text = "Адреса й налаштування  ▾"
+        show()
+        refresh()
+    }
+
+    private fun hideKeyboard() {
+        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(house.windowToken, 0)
+        house.clearFocus()
     }
 
     private fun bindReminderSettings() {
@@ -178,6 +259,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun show() {
+        val hasAddress = Store.hasAddress(this)
+        for (id in intArrayOf(R.id.today_card, R.id.tomorrow_card, R.id.stats_card, R.id.share, R.id.address)) {
+            findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
+        }
+        if (!hasAddress) {
+            tint(statusDot, R.color.on)
+            statusLabel.text = "ПОЧНІМО"
+            bigTime.text = "Ваша адреса"
+            bigTime.textSize = 40f
+            caption.text = "Оберіть вулицю й будинок нижче — графік ДТЕК підтягнеться автоматично."
+            settings.visibility = View.VISIBLE
+            settingsToggle.text = "Адреса й налаштування  ▴"
+            info.text = "Неофіційний застосунок. Дані з сайту ДТЕК Київські електромережі."
+            return
+        }
+        bigTime.textSize = 72f
+
         val snap = Store.load(this)
         val now = Instant.now()
         val st = StatusCalc.of(snap, now)
