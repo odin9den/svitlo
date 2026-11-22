@@ -15,7 +15,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.LinearLayout
 import android.widget.RadioGroup
@@ -188,7 +187,7 @@ class MainActivity : ComponentActivity() {
 
     private fun bindStreets() {
         val list = Store.streets(this)
-        if (list.isNotEmpty()) street.setAdapter(ArrayAdapter(this, R.layout.item_dropdown, list))
+        if (list.isNotEmpty()) street.setAdapter(ContainsAdapter(this, list))
     }
 
     private fun loadHouses(s: String, open: Boolean) {
@@ -204,7 +203,7 @@ class MainActivity : ComponentActivity() {
             house.hint = "Номер будинку"
             r.onSuccess { list ->
                 housesFor = s
-                house.setAdapter(ArrayAdapter(this@MainActivity, R.layout.item_dropdown, list))
+                house.setAdapter(ContainsAdapter(this@MainActivity, list))
                 if (open) {
                     house.requestFocus()
                     house.showDropDown()

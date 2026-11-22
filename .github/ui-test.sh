@@ -46,7 +46,9 @@ done
 adb shell input swipe 540 1900 540 300 400; sleep 2; shot 05-bottom
 tap_text "Адреса й налаштування"; sleep 2
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05b-settings
-tap_id house; sleep 4; shot 05d-house-dropdown
+tap_id house; sleep 4
+adb shell input keyevent KEYCODE_MOVE_END; for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DEL; done
+adb shell input text "2"; sleep 3; shot 05d-house-dropdown
 adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
 
