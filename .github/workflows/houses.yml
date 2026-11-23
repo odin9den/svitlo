@@ -1,0 +1,26 @@
+name: Kyiv houses list
+# Раз на тиждень оновлює довідник будинків Києва в гілці data; збірка вкладає його в застосунок
+on:
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Crawl
+        run: python3 .github/crawl-houses.py /tmp/houses-kyiv.json
+      - name: Save to data branch
+        run: |
+          git config user.name odin9den
+          git config user.email odin9den@users.noreply.github.com
+          git fetch origin data || true
+          if git rev-parse --verify origin/data >/dev/null 2>&1; then git checkout -B data origin/data; else git checkout --orphan data; git rm -rfq .; fi
+          cp /tmp/houses-kyiv.json houses-kyiv.json
+          git add houses-kyiv.json
+          git diff --cached --quiet || git commit -qm "houses-kyiv $(date -u +%F)"
+          git push origin data
