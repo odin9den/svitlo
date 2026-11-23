@@ -1,0 +1,37 @@
+name: probe
+on:
+  push:
+    branches: [probe-krem]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: probe
+        run: |
+          UA="Mozilla/5.0 (Linux; Android 16; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
+          for site in www.dtek-krem.com.ua www.dtek-kem.com.ua; do
+            echo "===== $site"
+            rm -f c.txt
+            code=$(curl -s -c c.txt -b c.txt -A "$UA" -o p.html -w "%{http_code}" https://$site/ua/shutdowns)
+            echo "code=$code size=$(wc -c < p.html)"
+            grep -o 'DisconSchedule\.[a-zA-Z_]* *=' p.html | sort | uniq -c
+            grep -o 'method[^,;]\{0,60\}' p.html | sort -u | head -20
+            grep -oE 'name="[a-z_]+"' p.html | sort -u | head -30
+            grep -oE 'id="[a-z_-]*(city|street|house|search)[a-z_-]*"' p.html | sort -u
+            grep -oE '"GPV[0-9.]+"' p.html | sort -u | tr '\n' ' '; echo
+            python3 - <<'PY'
+          import re,json
+          s=open('p.html',encoding='utf-8',errors='ignore').read()
+          for k in ['streets','city','cities','fact','preset']:
+              m=re.search(r'DisconSchedule\.'+k+r'\s*=\s*(.{0,400})',s)
+              if m: print(k,'=>',m.group(1)[:400].replace('\n',' '))
+          PY
+            tok=$(grep -oE 'name="csrf-token" content="[^"]+"' p.html | sed 's/.*content="//;s/"$//')
+            echo "csrf=${tok:0:8}"
+            for m in getHomeNum getStreets getCity; do
+              echo "--- ajax $m"
+              curl -s -c c.txt -b c.txt -A "$UA" -H "X-CSRF-Token: $tok" -H "X-Requested-With: XMLHttpRequest" \
+                --data-urlencode "method=$m" --data-urlencode "data[0][name]=city" --data-urlencode "data[0][value]=с. Гатне" \
+                https://$site/ua/ajax | head -c 600; echo
+            done
+          done
