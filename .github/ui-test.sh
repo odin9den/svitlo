@@ -65,7 +65,9 @@ adb shell input swipe 540 900 540 1900 300; sleep 1
 tap_text "Хрещатик"; sleep 25; shot 09-switched-kyiv
 # Форма нової адреси: регіон «Київська область», підказки населених пунктів
 tap_text "+ Адреса"; sleep 2
-tap_text "Київська область"; sleep 15
+tap_id region; sleep 2
+shot 10a-regions
+tap_text "Одеська область"; sleep 15
 shot 10-add-form
 tap_id city; sleep 1
 sleep 3; shot 10b-city-dropdown

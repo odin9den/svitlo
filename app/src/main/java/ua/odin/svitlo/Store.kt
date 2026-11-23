@@ -111,12 +111,12 @@ object Store {
     private fun streetsFile(ctx: Context, r: Region) =
         java.io.File(ctx.filesDir, if (r == Region.KYIV) "streets.json" else "streets-${r.key}.json")
 
-    @Volatile private var oblastCache: JSONObject? = null
+    private val cityCache = java.util.concurrent.ConcurrentHashMap<Region, JSONObject>()
 
     fun saveStreets(ctx: Context, r: Region, json: String) {
         if (json.length < 2000) return
         streetsFile(ctx, r).writeText(json)
-        if (r != Region.KYIV) oblastCache = null
+        cityCache.remove(r)
     }
 
     /** Довідник: свіжий із сайту, а якщо його ще немає — вкладений у застосунок під час збірки. */
@@ -126,11 +126,9 @@ object Store {
         return runCatching { ctx.assets.open(f.name).bufferedReader().use { it.readText() } }.getOrNull()
     }
 
-    private fun oblast(ctx: Context): JSONObject? = oblastCache ?: runCatching {
-        JSONObject(streetsText(ctx, Region.OBLAST)!!)
-    }.getOrNull()?.also { oblastCache = it }
-
-    private val ukCollator = java.text.Collator.getInstance(java.util.Locale.forLanguageTag("uk"))
+    private fun cityMap(ctx: Context, r: Region): JSONObject? = cityCache[r] ?: runCatching {
+        JSONObject(streetsText(ctx, r)!!)
+    }.getOrNull()?.also { cityCache[r] = it }
 
     @Volatile private var housesCache: JSONObject? = null
 
@@ -144,15 +142,16 @@ object Store {
     }
 
     /** «м. Бровари», «с. Гатне», «Броварська ТГ» — сортуємо за самою назвою, за українською абеткою. */
-    fun cities(ctx: Context): List<String> {
-        val prefix = Regex("^(м|с|смт|сел|с-ще)\\.\\s*")
-        return oblast(ctx)?.keys()?.asSequence()?.filter { it.isNotBlank() }?.toList().orEmpty()
+    fun cities(ctx: Context, r: Region): List<String> {
+        val prefix = Regex("^(м\\.|с\\.|смт\\.?|сел\\.|с-ще|місто|село|селище)\\s*")
+        if (!r.hasCities) return emptyList()
+        return cityMap(ctx, r)?.keys()?.asSequence()?.filter { it.isNotBlank() }?.toList().orEmpty()
             .sortedWith(compareBy(ukCollator) { it.replace(prefix, "") })
     }
 
     fun streets(ctx: Context, r: Region, city: String = ""): List<String> = runCatching {
         val a = if (r == Region.KYIV) JSONArray(streetsText(ctx, r)!!)
-        else oblast(ctx)?.optJSONArray(city) ?: JSONArray()
+        else cityMap(ctx, r)?.optJSONArray(city) ?: JSONArray()
         (0 until a.length()).map { a.getString(it) }.filter { it.isNotBlank() }
     }.getOrDefault(emptyList())
 

@@ -4,7 +4,10 @@ import json, sys, urllib.request
 
 UA = "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
 SITES = {"streets.json": ("https://www.dtek-kem.com.ua/ua/shutdowns", list),
-         "streets-oblast.json": ("https://www.dtek-krem.com.ua/ua/shutdowns", dict)}
+         "streets-oblast.json": ("https://www.dtek-krem.com.ua/ua/shutdowns", dict),
+         "streets-dnipro.json": ("https://www.dtek-dnem.com.ua/ua/shutdowns", dict),
+         "streets-odesa.json": ("https://www.dtek-oem.com.ua/ua/shutdowns", dict),
+         "streets-donetsk.json": ("https://www.dtek-dem.com.ua/ua/shutdowns", dict)}
 out = sys.argv[1]
 for name, (url, kind) in SITES.items():
     try:

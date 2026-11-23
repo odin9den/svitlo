@@ -5,14 +5,21 @@ import org.json.JSONObject
 /** Регіон = окремий сайт ДТЕК. Сторінки влаштовані однаково, різниться лише пошук адреси. */
 enum class Region(val key: String, val base: String, val title: String, val company: String) {
     KYIV("kyiv", "https://www.dtek-kem.com.ua", "Київ", "ДТЕК Київські електромережі"),
-    OBLAST("oblast", "https://www.dtek-krem.com.ua", "Київська область", "ДТЕК Київські регіональні електромережі");
+    OBLAST("oblast", "https://www.dtek-krem.com.ua", "Київська область", "ДТЕК Київські регіональні електромережі"),
+    DNIPRO("dnipro", "https://www.dtek-dnem.com.ua", "Дніпропетровська область", "ДТЕК Дніпровські електромережі"),
+    ODESA("odesa", "https://www.dtek-oem.com.ua", "Одеська область", "ДТЕК Одеські електромережі"),
+    DONETSK("donetsk", "https://www.dtek-dem.com.ua", "Донецька область", "ДТЕК Донецькі електромережі");
+
+    /** Усі регіони, крім Києва, шукають адресу через населений пункт. */
+    val hasCities: Boolean get() = this != KYIV
 
     /** Поля запиту getHomeNum: у Києві лише вулиця, в області — населений пункт і вулиця. */
     fun homeQuery(city: String, street: String): List<Pair<String, String>> =
-        if (this == KYIV) listOf("street" to street) else listOf("city" to city, "street" to street)
+        if (!hasCities) listOf("street" to street) else listOf("city" to city, "street" to street)
 
     companion object {
         fun of(key: String?) = entries.firstOrNull { it.key == key } ?: KYIV
+        fun byTitle(t: String) = entries.firstOrNull { it.title == t }
     }
 }
 
@@ -32,7 +39,7 @@ data class Address(
 
     val full: String
         get() = buildString {
-            if (region == Region.OBLAST && city.isNotBlank()) append(city).append(", ")
+            if (region.hasCities && city.isNotBlank()) append(city).append(", ")
             append(street).append(", ").append(house)
         }
 

@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var house: AutoCompleteTextView
     private lateinit var city: AutoCompleteTextView
     private lateinit var addrName: EditText
-    private lateinit var regionGroup: RadioGroup
+    private lateinit var regionField: AutoCompleteTextView
     private lateinit var chips: LinearLayout
     private var housesFor: String? = null
     /** Регіон у формі адреси. */
@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         house = findViewById(R.id.house)
         city = findViewById(R.id.city)
         addrName = findViewById(R.id.addr_name)
-        regionGroup = findViewById(R.id.region)
+        regionField = findViewById(R.id.region)
         chips = findViewById(R.id.addr_chips)
         battery = findViewById(R.id.battery)
         settings = findViewById(R.id.settings)
@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
             val h = house.text.toString().trim()
             val known = Store.streets(this, formRegion, c)
             when {
-                formRegion == Region.OBLAST && c !in Store.cities(this) ->
+                formRegion.hasCities && c !in Store.cities(this, formRegion) ->
                     toast("Оберіть населений пункт зі списку")
                 st.isBlank() || h.isBlank() -> toast("Оберіть вулицю й будинок зі списку")
                 known.isNotEmpty() && st !in known -> toast("Такої вулиці немає в базі ДТЕК — оберіть зі списку")
@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
             Refresher.refresh(this@MainActivity)
             swipe.isRefreshing = false
             if (street.adapter == null) bindStreets()
-            if (formRegion == Region.OBLAST && city.adapter == null) bindCities()
+            if (formRegion.hasCities && city.adapter == null) bindCities()
             show()
         }
     }
@@ -278,9 +278,18 @@ class MainActivity : ComponentActivity() {
     private fun setupAddress() {
         for (f in listOf(street, house, city)) f.setDropDownBackgroundResource(R.drawable.dropdown_bg)
 
-        regionGroup.setOnCheckedChangeListener { _, id ->
-            if (filling) return@setOnCheckedChangeListener
-            formRegion = if (id == R.id.region_oblast) Region.OBLAST else Region.KYIV
+        regionField.setAdapter(
+            android.widget.ArrayAdapter(this, R.layout.item_dropdown, Region.entries.map { it.title }),
+        )
+        regionField.setDropDownBackgroundResource(R.drawable.dropdown_bg)
+        // Показуємо всі регіони, а не відфільтровані за поточним текстом
+        regionField.setOnClickListener {
+            (regionField.adapter as android.widget.ArrayAdapter<*>).filter.filter(null) { regionField.showDropDown() }
+        }
+        regionField.setOnItemClickListener { parent, _, pos, _ ->
+            val r = Region.byTitle(parent.getItemAtPosition(pos) as String) ?: Region.KYIV
+            if (r == formRegion) return@setOnItemClickListener
+            formRegion = r
             city.setText("", false)
             street.setText("", false)
             house.setText("", false)
@@ -288,6 +297,7 @@ class MainActivity : ComponentActivity() {
             house.setAdapter(null)
             house.isEnabled = false
             house.hint = "Спершу оберіть вулицю"
+            city.setAdapter(null)
             applyRegionUi()
             warmed = 0L
             prewarm()
@@ -329,7 +339,7 @@ class MainActivity : ComponentActivity() {
     private fun fillForm(a: Address?, loadHouses: Boolean = true) {
         filling = true
         formRegion = a?.region ?: Region.KYIV
-        regionGroup.check(if (formRegion == Region.OBLAST) R.id.region_oblast else R.id.region_kyiv)
+        regionField.setText(formRegion.title, false)
         filling = false
         city.setText(a?.city.orEmpty(), false)
         street.setText(a?.street.orEmpty(), false)
@@ -352,9 +362,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyRegionUi() {
-        city.visibility = if (formRegion == Region.OBLAST) View.VISIBLE else View.GONE
-        street.hint = if (formRegion == Region.OBLAST) "Вулиця" else "Почніть вводити назву вулиці"
-        if (formRegion == Region.OBLAST) bindCities()
+        city.visibility = if (formRegion.hasCities) View.VISIBLE else View.GONE
+        city.hint = cityHint()
+        street.hint = if (formRegion.hasCities) "Вулиця" else "Почніть вводити назву вулиці"
+        if (formRegion.hasCities) bindCities()
         bindStreets()
     }
 
@@ -372,8 +383,17 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Населені пункти області; якщо довідника ще немає — завантажуємо його з сайту ДТЕК. */
+    private fun cityHint() = when (formRegion) {
+        Region.OBLAST -> "Населений пункт, напр. Бровари"
+        Region.DNIPRO -> "Населений пункт, напр. Дніпро"
+        Region.ODESA -> "Населений пункт, напр. Одеса"
+        Region.DONETSK -> "Населений пункт, напр. Краматорськ"
+        Region.KYIV -> ""
+    }
+
     private fun bindCities() {
-        val list = Store.cities(this)
+        val region = formRegion
+        val list = Store.cities(this, region)
         if (list.isNotEmpty()) {
             city.setAdapter(ContainsAdapter(this, list))
             return
@@ -382,9 +402,10 @@ class MainActivity : ComponentActivity() {
         if (settings.visibility != View.VISIBLE) return
         city.hint = "Завантажую населені пункти…"
         lifecycleScope.launch {
-            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, Region.OBLAST) } }
-            city.hint = "Населений пункт, напр. Бровари"
-            val loaded = Store.cities(this@MainActivity)
+            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, region) } }
+            if (formRegion != region) return@launch
+            city.hint = cityHint()
+            val loaded = Store.cities(this@MainActivity, region)
             if (loaded.isNotEmpty()) {
                 city.setAdapter(ContainsAdapter(this@MainActivity, loaded))
                 bindStreets()
@@ -424,7 +445,7 @@ class MainActivity : ComponentActivity() {
 
     private fun applyAddress(s: String, h: String) {
         val a = Address(
-            "", formRegion, if (formRegion == Region.OBLAST) city.text.toString().trim() else "",
+            "", formRegion, if (formRegion.hasCities) city.text.toString().trim() else "",
             s, h, addrName.text.toString().trim(),
         )
         if (adding || !Store.hasAddress(this)) Store.addAddress(this, a) else Store.updateActive(this, a)
