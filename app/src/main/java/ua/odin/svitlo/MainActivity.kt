@@ -104,7 +104,10 @@ class MainActivity : ComponentActivity() {
 
         swipe.setColorSchemeColors(getColor(R.color.on))
         swipe.setProgressBackgroundColorSchemeColor(getColor(R.color.card))
-        swipe.setOnRefreshListener { refresh() }
+        swipe.setOnRefreshListener {
+            DtekClient.forget()
+            refresh(spinner = true)
+        }
 
         // Адреса з інтенту (використовує автотест на емуляторі)
         val xs = intent.getStringExtra("street")
@@ -168,8 +171,16 @@ class MainActivity : ComponentActivity() {
         ticker.removeCallbacks(tick)
     }
 
-    private fun refresh() {
-        swipe.isRefreshing = true
+    /**
+     * Оновлення з ДТЕК. Якщо графік уже є в кеші, показуємо його одразу й оновлюємо тихо,
+     * без лоадера; свіжий (до 5 хв) взагалі не перезавантажуємо.
+     */
+    private fun refresh(spinner: Boolean = false) {
+        val snap = Store.load(this)
+        val fresh = snap != null && Store.error(this) == null &&
+            System.currentTimeMillis() - snap.fetchedAt < 5 * 60_000L
+        if (!spinner && fresh) return
+        swipe.isRefreshing = spinner || snap == null
         lifecycleScope.launch {
             Refresher.refresh(this@MainActivity)
             swipe.isRefreshing = false
@@ -276,11 +287,11 @@ class MainActivity : ComponentActivity() {
         house.setOnClickListener { openHouses() }
 
         adding = !Store.hasAddress(this)
-        fillForm(Store.active(this))
+        fillForm(Store.active(this), loadHouses = false)
     }
 
     /** Заповнити форму адресою (або очистити для нової). */
-    private fun fillForm(a: Address?) {
+    private fun fillForm(a: Address?, loadHouses: Boolean = true) {
         filling = true
         formRegion = a?.region ?: Region.KYIV
         regionGroup.check(if (formRegion == Region.OBLAST) R.id.region_oblast else R.id.region_kyiv)
@@ -294,7 +305,8 @@ class MainActivity : ComponentActivity() {
         house.isEnabled = a != null
         house.hint = if (a != null) "Номер будинку" else "Спершу оберіть вулицю"
         applyRegionUi()
-        if (a != null) loadHouses(a.street, open = false)
+        // Будинки потрібні лише у відкритій формі — не гальмуємо ними старт
+        if (a != null && loadHouses) loadHouses(a.street, open = false)
 
         val hasAny = Store.hasAddress(this)
         // Назва потрібна, лише коли адрес кілька; на першому екрані — тільки вулиця й будинок

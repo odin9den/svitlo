@@ -32,8 +32,24 @@ object DtekClient {
     private val lock = Mutex()
 
     /** Сторінка ДТЕК і відповідь getHomeNum (спершу прямий запит, потім WebView). */
+    /** Остання відповідь: графік і будинки беруться з тієї самої сторінки, двічі її не качаємо. */
+    private var memo: Triple<String, Long, Pair<String, String?>>? = null
+    private const val MEMO_MS = 2 * 60_000L
+
     suspend fun load(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> =
-        lock.withLock { loadNow(ctx, region, city, street) }
+        lock.withLock {
+            val key = "${region.key}|$city|$street"
+            val now = System.currentTimeMillis()
+            memo?.let { (k, t, v) -> if (k == key && now - t < MEMO_MS) return@withLock v }
+            // Для довідника вулиць підійде й сторінка, завантажена разом з адресою
+            if (street.isBlank()) memo?.let { (k, t, v) ->
+                if (k.startsWith("${region.key}|") && now - t < MEMO_MS) return@withLock v.first to null
+            }
+            loadNow(ctx, region, city, street).also { memo = Triple(key, now, it) }
+        }
+
+    /** Примусове оновлення (жест «потягнути вниз») — без кешу. */
+    fun forget() { memo = null }
 
     private suspend fun loadNow(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> {
         val query = if (street.isBlank()) emptyList() else region.homeQuery(city, street)
