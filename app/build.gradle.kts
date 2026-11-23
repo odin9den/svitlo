@@ -13,8 +13,8 @@ android {
         applicationId = "ua.odin.svitlo"
         minSdk = 29
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.8.3"
+        versionCode = 18
+        versionName = "1.8.4"
     }
 
     // Ключ підпису береться зі змінних середовища (GitHub Secrets).

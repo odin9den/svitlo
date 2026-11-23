@@ -51,6 +51,12 @@ jobs:
             echo "SVITLO_KEYSTORE=$RUNNER_TEMP/svitlo.jks" >> $GITHUB_ENV
           fi
 
+      - name: Bundle DTEK street lists
+        run: |
+          mkdir -p app/src/main/assets
+          python3 .github/fetch-streets.py app/src/main/assets
+          ls -la app/src/main/assets
+
       - name: Build
         env:
           SVITLO_STORE_PASSWORD: ${{ secrets.SVITLO_STORE_PASSWORD }}

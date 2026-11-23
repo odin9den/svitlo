@@ -119,8 +119,15 @@ object Store {
         if (r != Region.KYIV) oblastCache = null
     }
 
+    /** Довідник: свіжий із сайту, а якщо його ще немає — вкладений у застосунок під час збірки. */
+    private fun streetsText(ctx: Context, r: Region): String? {
+        val f = streetsFile(ctx, r)
+        if (f.exists()) return runCatching { f.readText() }.getOrNull()
+        return runCatching { ctx.assets.open(f.name).bufferedReader().use { it.readText() } }.getOrNull()
+    }
+
     private fun oblast(ctx: Context): JSONObject? = oblastCache ?: runCatching {
-        JSONObject(streetsFile(ctx, Region.OBLAST).readText())
+        JSONObject(streetsText(ctx, Region.OBLAST)!!)
     }.getOrNull()?.also { oblastCache = it }
 
     private val ukCollator = java.text.Collator.getInstance(java.util.Locale.forLanguageTag("uk"))
@@ -133,7 +140,7 @@ object Store {
     }
 
     fun streets(ctx: Context, r: Region, city: String = ""): List<String> = runCatching {
-        val a = if (r == Region.KYIV) JSONArray(streetsFile(ctx, r).readText())
+        val a = if (r == Region.KYIV) JSONArray(streetsText(ctx, r)!!)
         else oblast(ctx)?.optJSONArray(city) ?: JSONArray()
         (0 until a.length()).map { a.getString(it) }.filter { it.isNotBlank() }
     }.getOrDefault(emptyList())
@@ -147,6 +154,11 @@ object Store {
     fun reminderSound(ctx: Context) = p(ctx).getBoolean("reminder_sound", true)
     fun setBool(ctx: Context, key: String, v: Boolean) = p(ctx).edit().putBoolean(key, v).apply()
     fun setLead(ctx: Context, min: Int) = p(ctx).edit().putInt("lead_min", min).apply()
+
+    /** Сайт ДТЕК блокує прямі запити з цього телефона — кілька годин одразу йдемо через WebView. */
+    fun directBlocked(ctx: Context) = p(ctx).getLong("direct_blocked_until", 0) > System.currentTimeMillis()
+    fun setDirectBlocked(ctx: Context, blocked: Boolean) = p(ctx).edit()
+        .putLong("direct_blocked_until", if (blocked) System.currentTimeMillis() + 6 * 3600_000L else 0).apply()
 
     fun setError(ctx: Context, msg: String?) = p(ctx).edit().putString("error", msg).apply()
 

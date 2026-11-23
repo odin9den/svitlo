@@ -23,7 +23,7 @@ object Refresher {
     suspend fun refresh(ctx: Context): Result<Snapshot> = withContext(Dispatchers.IO) {
         val addr = Store.active(ctx)
         if (addr == null) {
-            runCatching { DtekClient.refreshStreets(ctx, Region.KYIV) }
+            // Довідник вулиць уже вкладений у застосунок — без адреси мережа не потрібна
             Renderer.renderAll(ctx)
             return@withContext Result.failure(IllegalStateException("Адресу не вказано"))
         }

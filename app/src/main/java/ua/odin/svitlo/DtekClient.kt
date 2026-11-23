@@ -53,12 +53,18 @@ object DtekClient {
 
     private suspend fun loadNow(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> {
         val query = if (street.isBlank()) emptyList() else region.homeQuery(city, street)
-        val direct = runCatching { httpFetch(region, query) }
-            .onFailure { log("http failed: ${it.message}") }.getOrNull()
-        val pageOk = direct != null && direct.first.contains(MARKER)
-        val ajaxOk = query.isEmpty() || hasData(direct?.second)
-        log("http ${region.key}: page=$pageOk ajax=$ajaxOk street='$street' ajaxLen=${direct?.second?.length}")
-        if (pageOk && ajaxOk) return direct!!
+        if (!Store.directBlocked(ctx)) {
+            val direct = runCatching { httpFetch(region, query) }
+                .onFailure { log("http failed: ${it.message}") }.getOrNull()
+            val pageOk = direct != null && direct.first.contains(MARKER)
+            val ajaxOk = query.isEmpty() || hasData(direct?.second)
+            log("http ${region.key}: page=$pageOk ajax=$ajaxOk street='$street' ajaxLen=${direct?.second?.length}")
+            if (pageOk && ajaxOk) return direct!!
+            // Сторінку не віддали (захист Imperva) — запам'ятовуємо, щоб наступного разу не чекати марно
+            if (!pageOk && direct != null) Store.setDirectBlocked(ctx, true)
+        } else {
+            log("http skipped: blocked recently")
+        }
         val web = WebFetcher.fetch(ctx, region, query)
         log("webview: ajax=${hasData(web.second)} ajaxLen=${web.second?.length}")
         return web
@@ -160,8 +166,8 @@ object DtekClient {
 
     private fun open(url: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 30_000
+            connectTimeout = 10_000
+            readTimeout = 20_000
             setRequestProperty("User-Agent", UA)
             setRequestProperty("Accept-Language", "uk-UA,uk;q=0.9")
         }

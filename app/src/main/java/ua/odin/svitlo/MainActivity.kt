@@ -180,6 +180,22 @@ class MainActivity : ComponentActivity() {
         val fresh = snap != null && Store.error(this) == null &&
             System.currentTimeMillis() - snap.fetchedAt < 5 * 60_000L
         if (!spinner && fresh) return
+        // Без адреси нічого не завантажуємо — і лоадер не крутимо
+        if (!Store.hasAddress(this)) {
+            swipe.isRefreshing = false
+            if (street.adapter == null) bindStreets()
+            // Запасний варіант: у збірці немає довідника — тихо тягнемо його з сайту
+            if (Store.streets(this, Region.KYIV).isEmpty()) {
+                street.hint = "Завантажую список вулиць…"
+                lifecycleScope.launch {
+                    runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, Region.KYIV) } }
+                    street.hint = "Почніть вводити назву вулиці"
+                    bindStreets()
+                }
+            }
+            show()
+            return
+        }
         swipe.isRefreshing = spinner || snap == null
         lifecycleScope.launch {
             Refresher.refresh(this@MainActivity)
