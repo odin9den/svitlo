@@ -14,7 +14,9 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.app.AlertDialog
 import android.widget.Button
+import android.widget.EditText
 import android.widget.AutoCompleteTextView
 import android.widget.LinearLayout
 import android.widget.RadioGroup
@@ -23,6 +25,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +47,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var info: TextView
     private lateinit var street: AutoCompleteTextView
     private lateinit var house: AutoCompleteTextView
+    private lateinit var city: AutoCompleteTextView
+    private lateinit var addrName: EditText
+    private lateinit var regionGroup: RadioGroup
+    private lateinit var chips: LinearLayout
     private var housesFor: String? = null
+    /** Регіон у формі адреси. */
+    private var formRegion = Region.KYIV
+    /** Форма додає нову адресу (а не редагує активну). */
+    private var adding = false
+    private var filling = false
     private lateinit var battery: Button
     private lateinit var settings: View
     private lateinit var settingsToggle: TextView
@@ -78,6 +90,10 @@ class MainActivity : ComponentActivity() {
         info = findViewById(R.id.info)
         street = findViewById(R.id.street)
         house = findViewById(R.id.house)
+        city = findViewById(R.id.city)
+        addrName = findViewById(R.id.addr_name)
+        regionGroup = findViewById(R.id.region)
+        chips = findViewById(R.id.addr_chips)
         battery = findViewById(R.id.battery)
         settings = findViewById(R.id.settings)
         settingsToggle = findViewById(R.id.settings_toggle)
@@ -93,24 +109,40 @@ class MainActivity : ComponentActivity() {
         // Адреса з інтенту (використовує автотест на емуляторі)
         val xs = intent.getStringExtra("street")
         val xh = intent.getStringExtra("house")
-        if (!xs.isNullOrBlank() && !xh.isNullOrBlank()) Store.saveAddress(this, xs, xh)
+        if (!xs.isNullOrBlank() && !xh.isNullOrBlank()) {
+            Store.addAddress(
+                this,
+                Address(
+                    "", Region.of(intent.getStringExtra("region")), intent.getStringExtra("city").orEmpty(),
+                    xs, xh, intent.getStringExtra("name").orEmpty(),
+                ),
+            )
+        }
         setupAddress()
         settingsToggle.setOnClickListener {
-            val open = settings.visibility != View.VISIBLE
-            settings.visibility = if (open) View.VISIBLE else View.GONE
-            settingsToggle.text = if (open) "Адреса й налаштування  ▴" else "Адреса й налаштування  ▾"
+            if (settings.visibility == View.VISIBLE) closeSettings() else openSettings(adding = false)
         }
         findViewById<Button>(R.id.save).setOnClickListener {
+            val c = city.text.toString().trim()
             val st = street.text.toString().trim()
             val h = house.text.toString().trim()
-            val known = Store.streets(this)
+            val known = Store.streets(this, formRegion, c)
             when {
+                formRegion == Region.OBLAST && c !in Store.cities(this) ->
+                    toast("Оберіть населений пункт зі списку")
                 st.isBlank() || h.isBlank() -> toast("Оберіть вулицю й будинок зі списку")
                 known.isNotEmpty() && st !in known -> toast("Такої вулиці немає в базі ДТЕК — оберіть зі списку")
                 else -> applyAddress(st, h)
             }
         }
+        findViewById<View>(R.id.delete_addr).setOnClickListener { confirmDelete() }
         battery.setOnClickListener { askBatteryExemption() }
+        findViewById<View>(R.id.perm_notif).setOnClickListener { askNotificationPermission() }
+        findViewById<View>(R.id.perm_battery).setOnClickListener { askBatteryExemption() }
+        findViewById<View>(R.id.perm_later).setOnClickListener {
+            prefs.edit().putBoolean("perm_later", true).apply()
+            show()
+        }
 
         findViewById<View>(R.id.share).setOnClickListener {
             val snap = Store.load(this)
@@ -118,12 +150,7 @@ class MainActivity : ComponentActivity() {
             else Share.open(this, snap)
         }
         bindReminderSettings()
-
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        // Дозвіл на сповіщення просимо з картки-пояснення, а не одразу при запуску
         refresh()
     }
 
@@ -147,21 +174,93 @@ class MainActivity : ComponentActivity() {
             Refresher.refresh(this@MainActivity)
             swipe.isRefreshing = false
             if (street.adapter == null) bindStreets()
+            if (formRegion == Region.OBLAST && city.adapter == null) bindCities()
             show()
         }
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 
-    // ---------- Адреса з підказками, як на сайті ДТЕК ----------
+    // ---------- Адреси ----------
+
+    /** Чипи над графіком: усі адреси, активна підсвічена, у кінці «+ Адреса». */
+    private fun renderChips() {
+        chips.removeAllViews()
+        val list = Store.addresses(this)
+        val active = Store.active(this)
+        val dp = resources.displayMetrics.density
+        fun chip(text: String, selected: Boolean, onClick: () -> Unit) = TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTypeface(typeface, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            setTextColor(getColor(if (selected) R.color.badge_text else R.color.text))
+            setBackgroundResource(R.drawable.pill)
+            backgroundTintList = ColorStateList.valueOf(getColor(if (selected) R.color.badge_bg else R.color.card))
+            setPadding((16 * dp).toInt(), (9 * dp).toInt(), (16 * dp).toInt(), (9 * dp).toInt())
+            maxLines = 1
+            setOnClickListener { onClick() }
+            chips.addView(this, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (8 * dp).toInt() })
+        }
+        for (a in list) {
+            chip(a.label, a.id == active?.id) { switchTo(a) }
+        }
+        chip("+ Адреса", false) { openSettings(adding = true) }
+    }
+
+    private fun switchTo(a: Address) {
+        if (a.id == Store.active(this)?.id) return
+        Store.setActive(this, a.id)
+        Renderer.renderAll(this)
+        closeSettings()
+        show()
+        refresh()
+    }
+
+    private fun openSettings(adding: Boolean) {
+        this.adding = adding
+        fillForm(if (adding) null else Store.active(this))
+        settings.visibility = View.VISIBLE
+        settingsToggle.text = "Адреса й налаштування  ▴"
+        if (adding) {
+            // У режимі додавання налаштування нагадувань не заважають
+            findViewById<View>(R.id.extra_settings).visibility = View.GONE
+            settings.post { findViewById<android.widget.ScrollView>(R.id.scroll)?.smoothScrollTo(0, settingsToggle.top) }
+        }
+    }
+
+    private fun closeSettings() {
+        adding = false
+        settings.visibility = View.GONE
+        settingsToggle.text = "Адреса й налаштування  ▾"
+        hideKeyboard()
+    }
 
     private fun setupAddress() {
-        street.setDropDownBackgroundResource(R.drawable.dropdown_bg)
-        house.setDropDownBackgroundResource(R.drawable.dropdown_bg)
-        street.setText(Store.street(this), false)
-        house.setText(Store.house(this), false)
-        bindStreets()
+        for (f in listOf(street, house, city)) f.setDropDownBackgroundResource(R.drawable.dropdown_bg)
 
+        regionGroup.setOnCheckedChangeListener { _, id ->
+            if (filling) return@setOnCheckedChangeListener
+            formRegion = if (id == R.id.region_oblast) Region.OBLAST else Region.KYIV
+            city.setText("", false)
+            street.setText("", false)
+            house.setText("", false)
+            housesFor = null
+            house.setAdapter(null)
+            house.isEnabled = false
+            house.hint = "Спершу оберіть вулицю"
+            applyRegionUi()
+        }
+        city.setOnItemClickListener { parent, _, pos, _ ->
+            city.setText(parent.getItemAtPosition(pos) as String, false)
+            street.setText("", false)
+            house.setText("", false)
+            housesFor = null
+            bindStreets()
+            street.requestFocus()
+        }
+        // Порожнє поле — показуємо весь список, щоб можна було гортати
+        city.setOnClickListener { if (city.text.isBlank() && city.adapter != null) city.showDropDown() }
+        city.setOnFocusChangeListener { _, f -> if (f && city.text.isBlank() && city.adapter != null) city.showDropDown() }
         street.setOnItemClickListener { parent, _, pos, _ ->
             val s = parent.getItemAtPosition(pos) as String
             house.setText("", false)
@@ -169,40 +268,102 @@ class MainActivity : ComponentActivity() {
         }
         house.setOnItemClickListener { parent, _, pos, _ ->
             hideKeyboard()
+            // Нову адресу з назвою зберігаємо кнопкою — щоб встигли дописати назву
+            if (adding && addrName.visibility == View.VISIBLE) return@setOnItemClickListener
             applyAddress(street.text.toString().trim(), parent.getItemAtPosition(pos) as String)
         }
         house.setOnFocusChangeListener { _, focused -> if (focused) openHouses() }
         house.setOnClickListener { openHouses() }
 
-        if (Store.street(this).isNotBlank()) loadHouses(Store.street(this), open = false)
+        adding = !Store.hasAddress(this)
+        fillForm(Store.active(this))
+    }
+
+    /** Заповнити форму адресою (або очистити для нової). */
+    private fun fillForm(a: Address?) {
+        filling = true
+        formRegion = a?.region ?: Region.KYIV
+        regionGroup.check(if (formRegion == Region.OBLAST) R.id.region_oblast else R.id.region_kyiv)
+        filling = false
+        city.setText(a?.city.orEmpty(), false)
+        street.setText(a?.street.orEmpty(), false)
+        house.setText(a?.house.orEmpty(), false)
+        addrName.setText(a?.name.orEmpty())
+        housesFor = null
+        house.setAdapter(null)
+        house.isEnabled = a != null
+        house.hint = if (a != null) "Номер будинку" else "Спершу оберіть вулицю"
+        applyRegionUi()
+        if (a != null) loadHouses(a.street, open = false)
+
+        val hasAny = Store.hasAddress(this)
+        // Назва потрібна, лише коли адрес кілька; на першому екрані — тільки вулиця й будинок
+        addrName.visibility = if (hasAny) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.delete_addr).visibility = if (!adding && a != null) View.VISIBLE else View.GONE
+        findViewById<Button>(R.id.save).text = if (adding && hasAny) "Додати адресу" else "Зберегти й оновити"
+        findViewById<View>(R.id.extra_settings).visibility = if (hasAny && !adding) View.VISIBLE else View.GONE
+    }
+
+    private fun applyRegionUi() {
+        city.visibility = if (formRegion == Region.OBLAST) View.VISIBLE else View.GONE
+        street.hint = if (formRegion == Region.OBLAST) "Вулиця" else "Почніть вводити назву вулиці"
+        if (formRegion == Region.OBLAST) bindCities()
+        bindStreets()
     }
 
     private fun openHouses() {
         val st = street.text.toString().trim()
         when {
-            house.adapter != null && housesFor == st -> house.showDropDown()
+            house.adapter != null && housesFor == houseKey(st) -> house.showDropDown()
             st.isNotBlank() -> loadHouses(st, open = true)
         }
     }
 
     private fun bindStreets() {
-        val list = Store.streets(this)
-        if (list.isNotEmpty()) street.setAdapter(ContainsAdapter(this, list))
+        val list = Store.streets(this, formRegion, city.text.toString().trim())
+        street.setAdapter(if (list.isNotEmpty()) ContainsAdapter(this, list) else null)
     }
 
+    /** Населені пункти області; якщо довідника ще немає — завантажуємо його з сайту ДТЕК. */
+    private fun bindCities() {
+        val list = Store.cities(this)
+        if (list.isNotEmpty()) {
+            city.setAdapter(ContainsAdapter(this, list))
+            return
+        }
+        city.hint = "Завантажую населені пункти…"
+        lifecycleScope.launch {
+            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, Region.OBLAST) } }
+            city.hint = "Населений пункт, напр. Бровари"
+            val loaded = Store.cities(this@MainActivity)
+            if (loaded.isNotEmpty()) {
+                city.setAdapter(ContainsAdapter(this@MainActivity, loaded))
+                bindStreets()
+            } else {
+                toast("Не вдалося завантажити населені пункти: ${r.exceptionOrNull()?.message ?: "порожній список"}")
+            }
+        }
+    }
+
+    private fun houseKey(st: String) = "${formRegion.key}|${city.text.toString().trim()}|$st"
+
     private fun loadHouses(s: String, open: Boolean) {
-        if (housesFor == s && house.adapter != null) {
+        val key = houseKey(s)
+        if (housesFor == key && house.adapter != null) {
             if (open) house.showDropDown()
             return
         }
+        val region = formRegion
+        val c = city.text.toString().trim()
         house.isEnabled = false
         house.hint = "Завантажую будинки…"
         lifecycleScope.launch {
-            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.houses(this@MainActivity, s) } }
+            val r = runCatching { withContext(Dispatchers.IO) { DtekClient.houses(this@MainActivity, region, c, s) } }
             house.isEnabled = true
             house.hint = "Номер будинку"
+            if (houseKey(s) != key) return@launch // поки чекали, форму змінили
             r.onSuccess { list ->
-                housesFor = s
+                housesFor = key
                 house.setAdapter(ContainsAdapter(this@MainActivity, list))
                 if (open) {
                     house.requestFocus()
@@ -213,16 +374,68 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyAddress(s: String, h: String) {
-        Store.saveAddress(this, s, h)
-        settings.visibility = View.GONE
-        settingsToggle.text = "Адреса й налаштування  ▾"
+        val a = Address(
+            "", formRegion, if (formRegion == Region.OBLAST) city.text.toString().trim() else "",
+            s, h, addrName.text.toString().trim(),
+        )
+        if (adding || !Store.hasAddress(this)) Store.addAddress(this, a) else Store.updateActive(this, a)
+        closeSettings()
+        Renderer.renderAll(this)
         show()
         refresh()
     }
 
+    private fun confirmDelete() {
+        val a = Store.active(this) ?: return
+        AlertDialog.Builder(this)
+            .setMessage("Видалити адресу «${a.label}»?")
+            .setPositiveButton("Видалити") { _, _ ->
+                Store.removeAddress(this, a.id)
+                closeSettings()
+                adding = !Store.hasAddress(this)
+                fillForm(Store.active(this))
+                Renderer.renderAll(this)
+                show()
+                if (Store.hasAddress(this)) refresh()
+            }
+            .setNegativeButton("Скасувати", null)
+            .show()
+    }
+
     private fun hideKeyboard() {
-        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(house.windowToken, 0)
-        house.clearFocus()
+        val v = currentFocus ?: house
+        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(v.windowToken, 0)
+        v.clearFocus()
+    }
+
+    // ---------- Дозволи ----------
+
+    private fun notificationsOk() = NotificationManagerCompat.from(this).areNotificationsEnabled()
+
+    private fun batteryOk() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    private fun askNotificationPermission() {
+        val prefs = getSharedPreferences("svitlo", MODE_PRIVATE)
+        val canAsk = Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            (!prefs.getBoolean("notif_asked", false) || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))
+        if (canAsk) {
+            prefs.edit().putBoolean("notif_asked", true).apply()
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // Система більше не показує запит — відкриваємо налаштування сповіщень застосунку
+            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+        }
+    }
+
+    private fun bindPermissionCard(hasAddress: Boolean) {
+        val n = notificationsOk()
+        val b = batteryOk()
+        val later = getSharedPreferences("svitlo", MODE_PRIVATE).getBoolean("perm_later", false)
+        findViewById<View>(R.id.perm_card).visibility =
+            if (hasAddress && !later && (!n || !b)) View.VISIBLE else View.GONE
+        for (id in intArrayOf(R.id.perm_notif_text, R.id.perm_notif)) findViewById<View>(id).visibility = if (n) View.GONE else View.VISIBLE
+        for (id in intArrayOf(R.id.perm_battery_text, R.id.perm_battery)) findViewById<View>(id).visibility = if (b) View.GONE else View.VISIBLE
     }
 
     private fun bindReminderSettings() {
@@ -267,16 +480,19 @@ class MainActivity : ComponentActivity() {
 
     private fun show() {
         val hasAddress = Store.hasAddress(this)
+        findViewById<View>(R.id.addr_scroll).visibility = if (hasAddress) View.VISIBLE else View.GONE
+        if (hasAddress) renderChips()
+        bindPermissionCard(hasAddress)
         for (id in intArrayOf(R.id.today_card, R.id.tomorrow_card, R.id.stats_card, R.id.share, R.id.address)) {
             findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
         }
-        for (id in intArrayOf(R.id.hero_card, R.id.settings_toggle, R.id.extra_settings, R.id.legend)) {
+        for (id in intArrayOf(R.id.hero_card, R.id.settings_toggle, R.id.legend)) {
             findViewById<View>(id).visibility = if (hasAddress) View.VISIBLE else View.GONE
         }
         if (!hasAddress) {
             // Новий користувач: лише поля вулиці й будинку
             settings.visibility = View.VISIBLE
-            info.text = "Неофіційний застосунок. Дані з сайту ДТЕК Київські електромережі."
+            info.text = "Неофіційний застосунок. Дані з сайтів ДТЕК."
             return
         }
 
@@ -285,8 +501,9 @@ class MainActivity : ComponentActivity() {
         val st = StatusCalc.of(snap, now)
         val sched = snap?.let { Schedule.from(it) } ?: Schedule(emptyMap())
 
+        val active = Store.active(this)
         address.text = buildString {
-            append(Store.street(this@MainActivity)).append(", ").append(Store.house(this@MainActivity))
+            append(active?.full.orEmpty())
             snap?.let { append("  ·  черга ").append(it.group.removePrefix("GPV")) }
         }
 
@@ -337,7 +554,7 @@ class MainActivity : ComponentActivity() {
                 append("Попередній збій: ").append(it.lineSequence().take(4).joinToString(" | "))
             }
             if (isNotEmpty()) append("\n")
-            append("Неофіційний застосунок. Дані з сайту ДТЕК Київські електромережі.")
+            append("Неофіційний застосунок. Дані з сайту ${active?.region?.company ?: "ДТЕК"}.")
             val v = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
             if (v != null) append("\nверсія $v")
         }

@@ -15,7 +15,7 @@ object Share {
         val s = Schedule.from(snap)
         val today = LocalDate.now(KYIV)
         val sb = StringBuilder()
-        sb.append("💡 Графік світла — ${Store.street(ctx)}, ${Store.house(ctx)}")
+        sb.append("💡 Графік світла — ${Store.active(ctx)?.full.orEmpty()}")
         sb.append(" (черга ${snap.group.removePrefix("GPV")})\n")
         for ((name, day) in listOf("Сьогодні" to today, "Завтра" to today.plusDays(1))) {
             val list = Intervals.forDay(s, day)

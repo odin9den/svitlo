@@ -52,6 +52,27 @@ adb shell input text "2"; sleep 3; shot 05d-house-dropdown
 adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell input swipe 540 1900 540 600 400; sleep 2; shot 05c-reminders
 
+adb shell input keyevent KEYCODE_BACK; sleep 1
+
+# 2b. Друга адреса — Київська область (інший сайт ДТЕК)
+adb shell am force-stop $P
+adb shell "am start -W -n $P/.MainActivity --es region oblast --es city 'м. Бровари' --es street 'вул. Незалежності' --es house 34 --es name 'Робота'"
+sleep 50
+shot 08-oblast
+adb shell input swipe 540 1700 540 900 400; sleep 2; shot 08b-oblast-scroll
+adb shell input swipe 540 900 540 1900 300; sleep 1
+# Перемикання на київську адресу чипом
+tap_text "Хрещатик"; sleep 25; shot 09-switched-kyiv
+# Форма нової адреси: регіон «Київська область», підказки населених пунктів
+tap_text "+ Адреса"; sleep 2
+tap_text "Київська область"; sleep 15
+shot 10-add-form
+tap_id city; sleep 1
+sleep 3; shot 10b-city-dropdown
+adb shell input keyevent KEYCODE_BACK; sleep 1
+adb shell input keyevent KEYCODE_BACK; sleep 1
+# Повертаємо активну адресу в області, щоб у шторці був підпис «Робота»
+tap_text "Робота"; sleep 25
 
 # 3. Шторка сповіщень із постійним сповіщенням
 adb shell cmd statusbar expand-notifications; sleep 3; shot 06-shade

@@ -14,12 +14,12 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * Бере дані з https://www.dtek-kem.com.ua/ua/shutdowns:
+ * Бере дані з сайтів ДТЕК (Київ — dtek-kem, область — dtek-krem), сторінка /ua/shutdowns:
  *  - погодинний графік усіх черг лежить у HTML як `DisconSchedule.fact = {...}`;
+ *  - список вулиць — `DisconSchedule.streets` (в області — згрупований за населеними пунктами);
  *  - черга й поточне відключення для адреси — POST /ua/ajax (method=getHomeNum).
  */
 object DtekClient {
-    private const val BASE = "https://www.dtek-kem.com.ua"
     private const val UA =
         "Mozilla/5.0 (Linux; Android 15; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/130.0.0.0 Mobile Safari/537.36"
@@ -28,20 +28,22 @@ object DtekClient {
 
     private const val MARKER = "DisconSchedule.fact = "
 
-    /** Сторінка ДТЕК і відповідь getHomeNum для вулиці (спершу прямий запит, потім WebView). */
     /** Запити до ДТЕК — суворо по одному: паралельні ламають сесію й CSRF-токен. */
     private val lock = Mutex()
 
-    suspend fun load(ctx: Context, street: String): Pair<String, String?> = lock.withLock { loadNow(ctx, street) }
+    /** Сторінка ДТЕК і відповідь getHomeNum (спершу прямий запит, потім WebView). */
+    suspend fun load(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> =
+        lock.withLock { loadNow(ctx, region, city, street) }
 
-    private suspend fun loadNow(ctx: Context, street: String): Pair<String, String?> {
-        val direct = runCatching { httpFetch(street) }
+    private suspend fun loadNow(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> {
+        val query = if (street.isBlank()) emptyList() else region.homeQuery(city, street)
+        val direct = runCatching { httpFetch(region, query) }
             .onFailure { log("http failed: ${it.message}") }.getOrNull()
         val pageOk = direct != null && direct.first.contains(MARKER)
-        val ajaxOk = street.isBlank() || hasData(direct?.second)
-        log("http: page=$pageOk ajax=$ajaxOk street='$street' ajaxLen=${direct?.second?.length}")
+        val ajaxOk = query.isEmpty() || hasData(direct?.second)
+        log("http ${region.key}: page=$pageOk ajax=$ajaxOk street='$street' ajaxLen=${direct?.second?.length}")
         if (pageOk && ajaxOk) return direct!!
-        val web = WebFetcher.fetch(ctx, street)
+        val web = WebFetcher.fetch(ctx, region, query)
         log("webview: ajax=${hasData(web.second)} ajaxLen=${web.second?.length}")
         return web
     }
@@ -51,21 +53,21 @@ object DtekClient {
 
     private fun log(msg: String) = android.util.Log.i("Svitlo", msg)
 
-    suspend fun fetch(ctx: Context, street: String, house: String, fallbackGroup: String): Snapshot {
-        val (page, ajax) = load(ctx, street)
-        runCatching { Store.saveStreets(ctx, streets(page)) }
-        return build(page, ajax, house, fallbackGroup)
+    suspend fun fetch(ctx: Context, a: Address, fallbackGroup: String): Snapshot {
+        val (page, ajax) = load(ctx, a.region, a.city, a.street)
+        runCatching { saveStreets(ctx, a.region, page) }
+        return build(page, ajax, a.house, fallbackGroup)
     }
 
-    /** Лише оновити список вулиць (коли адресу ще не вказано). */
-    suspend fun refreshStreets(ctx: Context) {
-        val (page, _) = load(ctx, "")
-        Store.saveStreets(ctx, streets(page))
+    /** Лише оновити довідник вулиць регіону. */
+    suspend fun refreshStreets(ctx: Context, region: Region) {
+        val (page, _) = load(ctx, region, "", "")
+        saveStreets(ctx, region, page)
     }
 
     /** Будинки вулиці у тому вигляді, як їх показує сайт ДТЕК («4/к.15»). */
-    suspend fun houses(ctx: Context, street: String): List<String> {
-        val (_, ajax) = load(ctx, street)
+    suspend fun houses(ctx: Context, region: Region, city: String, street: String): List<String> {
+        val (_, ajax) = load(ctx, region, city, street)
         val data = ajax?.let { runCatching { JSONObject(it).optJSONObject("data") }.getOrNull() }
             ?: error("ДТЕК не віддав список будинків")
         return data.keys().asSequence().toList().sortedWith(houseOrder)
@@ -77,29 +79,27 @@ object DtekClient {
         if (na != nb) na.compareTo(nb) else a.compareTo(b)
     }
 
-    fun streets(page: String): List<String> {
+    /** Вирізає `DisconSchedule.streets = ...` зі сторінки й кладе в Store як є (масив або об'єкт). */
+    private fun saveStreets(ctx: Context, region: Region, page: String) {
         val m = "DisconSchedule.streets = "
         val i = page.indexOf(m)
-        if (i < 0) return emptyList()
-        val arr = JSONTokener(page.substring(i + m.length)).nextValue() as? JSONArray ?: return emptyList()
-        return (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }
+        if (i < 0) return
+        val v = JSONTokener(page.substring(i + m.length)).nextValue()
+        when {
+            region == Region.KYIV && v is JSONArray -> Store.saveStreets(ctx, region, v.toString())
+            region != Region.KYIV && v is JSONObject -> Store.saveStreets(ctx, region, v.toString())
+        }
     }
 
-    private fun httpFetch(street: String): Pair<String, String?> {
+    private fun httpFetch(region: Region, query: List<Pair<String, String>>): Pair<String, String?> {
         CookieHandler.setDefault(cookies)
-        val html = get("$BASE/ua/shutdowns")
-        if (!html.contains(MARKER)) return html to null
-        val ajax = runCatching {
-            post(
-                "$BASE/ua/ajax",
-                listOf(
-                    "method" to "getHomeNum",
-                    "data[0][name]" to "street",
-                    "data[0][value]" to street,
-                ),
-                csrfToken(html),
-            )
-        }.getOrNull()
+        val base = region.base
+        val html = get("$base/ua/shutdowns")
+        if (!html.contains(MARKER) || query.isEmpty()) return html to null
+        val form = listOf("method" to "getHomeNum") + query.flatMapIndexed { n, (k, v) ->
+            listOf("data[$n][name]" to k, "data[$n][value]" to v)
+        }
+        val ajax = runCatching { post(base, form, csrfToken(html)) }.getOrNull()
         return html to ajax
     }
 
@@ -161,14 +161,14 @@ object DtekClient {
         try { readBody() } finally { disconnect() }
     }
 
-    private fun post(url: String, form: List<Pair<String, String>>, csrf: String?): String = open(url).run {
+    private fun post(base: String, form: List<Pair<String, String>>, csrf: String?): String = open("$base/ua/ajax").run {
         requestMethod = "POST"
         doOutput = true
         setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
         setRequestProperty("X-Requested-With", "XMLHttpRequest")
         if (csrf != null) setRequestProperty("X-CSRF-Token", csrf)
-        setRequestProperty("Origin", BASE)
-        setRequestProperty("Referer", "$BASE/ua/shutdowns")
+        setRequestProperty("Origin", base)
+        setRequestProperty("Referer", "$base/ua/shutdowns")
         val body = form.joinToString("&") { (k, v) ->
             URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")
         }

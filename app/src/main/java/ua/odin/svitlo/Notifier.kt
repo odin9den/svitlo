@@ -46,14 +46,16 @@ object Notifier {
         ensureChannel(ctx)
         val st = StatusCalc.of(snap, now)
         val sched = snap?.let { Schedule.from(it) } ?: Schedule(emptyMap())
+        // Кілька адрес — підписуємо, для якої з них графік
+        val sub = if (Store.addresses(ctx).size > 1) Store.active(ctx)?.label else null
         val pi = PendingIntent.getActivity(
             ctx, 0, Intent(ctx, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
-            buildLiveUpdate(ctx, sched, st, now, pi)
+            buildLiveUpdate(ctx, sched, st, now, pi, sub)
         } else {
-            buildClassic(ctx, sched, st, now, pi)
+            buildClassic(ctx, sched, st, now, pi, sub)
         }
         ctx.getSystemService(NotificationManager::class.java).notify(ID, n)
     }
@@ -64,7 +66,7 @@ object Notifier {
      */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     private fun buildLiveUpdate(
-        ctx: Context, sched: Schedule, st: Status, now: Instant, pi: PendingIntent,
+        ctx: Context, sched: Schedule, st: Status, now: Instant, pi: PendingIntent, sub: String?,
     ): Notification {
         val start = BarRenderer.windowStart(sched, now)
         val segments = mutableListOf<Notification.ProgressStyle.Segment>()
@@ -100,6 +102,7 @@ object Notifier {
             .setContentIntent(pi)
             .setDeleteIntent(restore(ctx))
         st.chip?.let { b.setShortCriticalText(it) }
+        sub?.let { b.setSubText(it) }
         st.until?.let {
             b.setWhen(it.toEpochMilli()).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
         }
@@ -126,7 +129,7 @@ object Notifier {
 
     /** Android 15 і старше: звичайне постійне сповіщення з картинкою шкали. */
     private fun buildClassic(
-        ctx: Context, sched: Schedule, st: Status, now: Instant, pi: PendingIntent,
+        ctx: Context, sched: Schedule, st: Status, now: Instant, pi: PendingIntent, sub: String?,
     ): Notification {
         val bar = BarRenderer.render(sched, now, 900, 100, 0xFF8A8F98.toInt())
         val rv = RemoteViews(ctx.packageName, R.layout.notif_bar).apply {
@@ -148,6 +151,7 @@ object Notifier {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setContentIntent(pi)
             .setDeleteIntent(restore(ctx))
+        sub?.let { b.setSubText(it) }
         st.until?.let {
             b.setWhen(it.toEpochMilli()).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
         }

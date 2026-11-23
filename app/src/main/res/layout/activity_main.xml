@@ -6,6 +6,7 @@
     android:fitsSystemWindows="true">
 
     <ScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false">
@@ -18,6 +19,22 @@
             android:paddingTop="12dp"
             android:paddingEnd="16dp"
             android:paddingBottom="32dp">
+
+            <!-- Адреси: чип активної + інші + «Додати» -->
+            <HorizontalScrollView
+                android:id="@+id/addr_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:clipToPadding="false"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/addr_chips"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
 
             <!-- Адреса й черга -->
             <TextView
@@ -94,6 +111,83 @@
                     android:paddingBottom="8dp"
                     android:text="Поділитися графіком"
                     android:textColor="@color/text"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Пояснення дозволів: зникає, коли все дозволено або «Пізніше» -->
+            <LinearLayout
+                android:id="@+id/perm_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Щоб графік був під рукою"
+                    android:textColor="@color/text"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:id="@+id/perm_notif_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="Сповіщення — графік на заблокованому екрані й нагадування перед відключенням."
+                    android:textColor="@color/text2"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/perm_notif"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/btn_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:stateListAnimator="@null"
+                    android:text="Дозволити сповіщення"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_text"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/perm_battery_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="Робота у фоні — інакше телефон «приспить» застосунок, графік перестане оновлюватись, а нагадування запізнюватимуться. Знайдіть «Світло» у списку й вимкніть для нього оптимізацію батареї."
+                    android:textColor="@color/text2"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/perm_battery"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/btn_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:stateListAnimator="@null"
+                    android:text="Дозволити роботу у фоні"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_text"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/perm_later"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:layout_marginTop="8dp"
+                    android:padding="8dp"
+                    android:text="Пізніше"
+                    android:textColor="@color/text2"
                     android:textSize="14sp" />
             </LinearLayout>
 
@@ -333,6 +427,52 @@
                 android:padding="20dp"
                 android:visibility="gone">
 
+                <RadioGroup
+                    android:id="@+id/region"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/region_kyiv"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:text="Київ"
+                        android:textColor="@color/text"
+                        android:textSize="15sp" />
+
+                    <RadioButton
+                        android:id="@+id/region_oblast"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1.4"
+                        android:minHeight="48dp"
+                        android:text="Київська область"
+                        android:textColor="@color/text"
+                        android:textSize="15sp" />
+                </RadioGroup>
+
+                <AutoCompleteTextView
+                    android:id="@+id/city"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/field_bg"
+                    android:completionThreshold="2"
+                    android:dropDownVerticalOffset="6dp"
+                    android:hint="Населений пункт, напр. Бровари"
+                    android:imeOptions="actionNext"
+                    android:inputType="textNoSuggestions"
+                    android:maxLines="1"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:textColor="@color/text"
+                    android:textColorHint="@color/text2"
+                    android:visibility="gone" />
+
                 <AutoCompleteTextView
                     android:id="@+id/street"
                     android:layout_width="match_parent"
@@ -367,6 +507,23 @@
                     android:textColor="@color/text"
                     android:textColorHint="@color/text2" />
 
+                <EditText
+                    android:id="@+id/addr_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/field_bg"
+                    android:hint="Назва, напр. Дім або Робота (необов’язково)"
+                    android:imeOptions="actionDone"
+                    android:inputType="textCapSentences"
+                    android:maxLength="24"
+                    android:maxLines="1"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:textColor="@color/text"
+                    android:textColorHint="@color/text2"
+                    android:visibility="gone" />
+
                 <Button
                     android:id="@+id/save"
                     android:layout_width="match_parent"
@@ -379,6 +536,18 @@
                     android:textAllCaps="false"
                     android:textColor="@color/button_text"
                     android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/delete_addr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="6dp"
+                    android:padding="10dp"
+                    android:text="Видалити цю адресу"
+                    android:textColor="@color/text2"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:id="@+id/extra_settings"

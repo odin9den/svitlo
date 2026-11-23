@@ -21,13 +21,16 @@ import java.util.concurrent.TimeUnit
 object Refresher {
     /** Забрати свіжі дані з ДТЕК і перемалювати все. */
     suspend fun refresh(ctx: Context): Result<Snapshot> = withContext(Dispatchers.IO) {
-        if (!Store.hasAddress(ctx)) {
-            runCatching { DtekClient.refreshStreets(ctx) }
+        val addr = Store.active(ctx)
+        if (addr == null) {
+            runCatching { DtekClient.refreshStreets(ctx, Region.KYIV) }
             Renderer.renderAll(ctx)
             return@withContext Result.failure(IllegalStateException("Адресу не вказано"))
         }
         val old = Store.load(ctx)
-        val r = runCatching { DtekClient.fetch(ctx, Store.street(ctx), Store.house(ctx), Store.group(ctx)) }
+        val r = runCatching { DtekClient.fetch(ctx, addr, Store.group(ctx)) }
+        // Поки чекали ДТЕК, користувач міг перемкнути адресу — тоді цей графік уже чужий
+        if (Store.active(ctx)?.id != addr.id) return@withContext r
         r.onSuccess {
             Store.save(ctx, it)
             runCatching { Reminders.checkChanges(ctx, old, it) }

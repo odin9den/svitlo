@@ -21,8 +21,6 @@ import org.json.JSONObject
  * браузер, після чого ми забираємо скрипт з графіком і робимо запит черги.
  */
 object WebFetcher {
-    private const val PAGE = "https://www.dtek-kem.com.ua/ua/shutdowns"
-
     class Bridge(private val result: CompletableDeferred<Pair<String, String?>>) {
         @JavascriptInterface
         fun done(script: String, ajax: String) {
@@ -31,24 +29,28 @@ object WebFetcher {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun fetch(ctx: Context, street: String): Pair<String, String?> = withContext(Dispatchers.Main) {
+    suspend fun fetch(ctx: Context, region: Region, query: List<Pair<String, String>>): Pair<String, String?> = withContext(Dispatchers.Main) {
         val result = CompletableDeferred<Pair<String, String?>>()
         val handler = Handler(Looper.getMainLooper())
         val wv = WebView(ctx.applicationContext)
         var lastInfo = ""
 
-        val streetJs = JSONObject.quote(street)
+        // Порожній запит — потрібна лише сторінка (довідник вулиць)
+        val fields = query.mapIndexed { n, (k, v) ->
+            "b.append('data[$n][name]', ${JSONObject.quote(k)}); b.append('data[$n][value]', ${JSONObject.quote(v)});"
+        }.joinToString("\n")
+        val skipAjax = if (query.isEmpty()) "SvitloBridge.done(s, ''); return 'OK';" else ""
         val probe = """
             (function(){
               var s = Array.prototype.map.call(document.scripts, function(x){ return x.text || ''; })
-                .filter(function(t){ return t.indexOf('DisconSchedule.fact = ') >= 0; })[0];
-              if (!s) return 'WAIT|' + document.title;
+                .filter(function(t){ return t.indexOf('DisconSchedule.') >= 0; }).join('\n');
+              if (s.indexOf('DisconSchedule.fact = ') < 0) return 'WAIT|' + document.title;
+              $skipAjax
               var m = document.querySelector('meta[name="csrf-token"]');
               var tok = m ? m.content : '';
               var b = new URLSearchParams();
               b.append('method', 'getHomeNum');
-              b.append('data[0][name]', 'street');
-              b.append('data[0][value]', $streetJs);
+              $fields
               fetch('/ua/ajax', {
                 method: 'POST', credentials: 'same-origin',
                 headers: {
@@ -87,7 +89,7 @@ object WebFetcher {
                 handler.postDelayed(check, 500)
             }
         }
-        wv.loadUrl(PAGE)
+        wv.loadUrl("${region.base}/ua/shutdowns")
 
         try {
             withTimeout(45_000) { result.await() }
