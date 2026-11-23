@@ -123,8 +123,14 @@ object Store {
         JSONObject(streetsFile(ctx, Region.OBLAST).readText())
     }.getOrNull()?.also { oblastCache = it }
 
-    fun cities(ctx: Context): List<String> =
-        oblast(ctx)?.keys()?.asSequence()?.filter { it.isNotBlank() }?.toList()?.sorted().orEmpty()
+    private val ukCollator = java.text.Collator.getInstance(java.util.Locale.forLanguageTag("uk"))
+
+    /** «м. Бровари», «с. Гатне», «Броварська ТГ» — сортуємо за самою назвою, за українською абеткою. */
+    fun cities(ctx: Context): List<String> {
+        val prefix = Regex("^(м|с|смт|сел|с-ще)\\.\\s*")
+        return oblast(ctx)?.keys()?.asSequence()?.filter { it.isNotBlank() }?.toList().orEmpty()
+            .sortedWith(compareBy(ukCollator) { it.replace(prefix, "") })
+    }
 
     fun streets(ctx: Context, r: Region, city: String = ""): List<String> = runCatching {
         val a = if (r == Region.KYIV) JSONArray(streetsFile(ctx, r).readText())

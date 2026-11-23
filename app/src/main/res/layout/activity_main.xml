@@ -513,7 +513,7 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="8dp"
                     android:background="@drawable/field_bg"
-                    android:hint="Назва, напр. Дім або Робота (необов’язково)"
+                    android:hint="Назва, напр. Дім (необов’язково)"
                     android:imeOptions="actionDone"
                     android:inputType="textCapSentences"
                     android:maxLength="24"

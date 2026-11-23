@@ -70,7 +70,8 @@ shot 10-add-form
 tap_id city; sleep 1
 sleep 3; shot 10b-city-dropdown
 adb shell input keyevent KEYCODE_BACK; sleep 1
-adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Адреса й налаштування"; sleep 2
+adb shell input swipe 540 600 540 1900 300; sleep 1; adb shell input swipe 540 600 540 1900 300; sleep 1
 # Повертаємо активну адресу в області, щоб у шторці був підпис «Робота»
 tap_text "Робота"; sleep 25
 
