@@ -1,0 +1,25 @@
+name: probe
+on:
+  push:
+    branches: [probe-regions]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: probe
+        run: |
+          UA="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
+          for site in www.dtek-oem.com.ua www.dtek-dnem.com.ua www.dtek-dem.com.ua; do
+            echo "===== $site"
+            code=$(curl -s -L -A "$UA" -o p.html -w "%{http_code}" https://$site/ua/shutdowns)
+            echo "code=$code size=$(wc -c < p.html)"
+            python3 - <<'PY'
+          import re,json
+          s=open('p.html',encoding='utf-8',errors='ignore').read()
+          print(sorted(set(re.findall(r'DisconSchedule\.(\w+)\s*=',s))))
+          print(sorted(set(re.findall(r'"(GPV[\d.]+)"',s)))[:40])
+          if 'DisconSchedule.streets' in s:
+              i=s.index('DisconSchedule.streets'); v,_=json.JSONDecoder().raw_decode(s[s.index('=',i)+1:].lstrip())
+              print(type(v).__name__, len(v), (list(v)[:5] if isinstance(v,dict) else v[:5]))
+          PY
+          done
