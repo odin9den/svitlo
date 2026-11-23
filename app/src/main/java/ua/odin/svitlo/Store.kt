@@ -111,6 +111,8 @@ object Store {
     private fun streetsFile(ctx: Context, r: Region) =
         java.io.File(ctx.filesDir, if (r == Region.KYIV) "streets.json" else "streets-${r.key}.json")
 
+    private val ukCollator = java.text.Collator.getInstance(java.util.Locale.forLanguageTag("uk"))
+
     private val cityCache = java.util.concurrent.ConcurrentHashMap<Region, JSONObject>()
 
     fun saveStreets(ctx: Context, r: Region, json: String) {
