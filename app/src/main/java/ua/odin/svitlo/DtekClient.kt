@@ -36,7 +36,9 @@ object DtekClient {
     private var memo: Triple<String, Long, Pair<String, String?>>? = null
     private const val MEMO_MS = 2 * 60_000L
 
-    suspend fun load(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> =
+    suspend fun load(
+        ctx: Context, region: Region, city: String, street: String, reuse: Boolean = false,
+    ): Pair<String, String?> =
         lock.withLock {
             val key = "${region.key}|$city|$street"
             val now = System.currentTimeMillis()
@@ -45,13 +47,16 @@ object DtekClient {
             if (street.isBlank()) memo?.let { (k, t, v) ->
                 if (k.startsWith("${region.key}|") && now - t < MEMO_MS) return@withLock v.first to null
             }
-            loadNow(ctx, region, city, street).also { memo = Triple(key, now, it) }
+            loadNow(ctx, region, city, street, reuse).also { memo = Triple(key, now, it) }
         }
 
     /** Примусове оновлення (жест «потягнути вниз») — без кешу. */
-    fun forget() { memo = null }
+    fun forget() { memo = null; forceFresh = true }
+    @Volatile private var forceFresh = false
 
-    private suspend fun loadNow(ctx: Context, region: Region, city: String, street: String): Pair<String, String?> {
+    private suspend fun loadNow(
+        ctx: Context, region: Region, city: String, street: String, reuse: Boolean,
+    ): Pair<String, String?> {
         val query = if (street.isBlank()) emptyList() else region.homeQuery(city, street)
         if (!Store.directBlocked(ctx)) {
             val direct = runCatching { httpFetch(region, query) }
@@ -65,7 +70,8 @@ object DtekClient {
         } else {
             log("http skipped: blocked recently")
         }
-        val web = WebFetcher.fetch(ctx, region, query)
+        val web = WebFetcher.fetch(ctx, region, query, reuse && !forceFresh)
+        forceFresh = false
         log("webview: ajax=${hasData(web.second)} ajaxLen=${web.second?.length}")
         return web
     }
@@ -76,20 +82,26 @@ object DtekClient {
     private fun log(msg: String) = android.util.Log.i("Svitlo", msg)
 
     suspend fun fetch(ctx: Context, a: Address, fallbackGroup: String): Snapshot {
-        val (page, ajax) = load(ctx, a.region, a.city, a.street)
+        // Сторінка, відкрита до 3 хв тому, ще свіжа — графік з неї теж годиться
+        val (page, ajax) = load(ctx, a.region, a.city, a.street, reuse = true)
         runCatching { saveStreets(ctx, a.region, page) }
         return build(page, ajax, a.house, fallbackGroup)
     }
 
     /** Лише оновити довідник вулиць регіону. */
     suspend fun refreshStreets(ctx: Context, region: Region) {
-        val (page, _) = load(ctx, region, "", "")
+        val (page, _) = load(ctx, region, "", "", reuse = true)
         saveStreets(ctx, region, page)
     }
 
     /** Будинки вулиці у тому вигляді, як їх показує сайт ДТЕК («4/к.15»). */
     suspend fun houses(ctx: Context, region: Region, city: String, street: String): List<String> {
-        val (_, ajax) = load(ctx, region, city, street)
+        // Київ: будинки вкладені в застосунок (щотижневий довідник) — без запиту до ДТЕК
+        if (region == Region.KYIV) Store.bundledHouses(ctx, street)?.let {
+            log("houses bundled: '$street' ${it.size}")
+            return it.sortedWith(houseOrder)
+        }
+        val (_, ajax) = load(ctx, region, city, street, reuse = true)
         val data = ajax?.let { runCatching { JSONObject(it).optJSONObject("data") }.getOrNull() }
             ?: error("ДТЕК не віддав список будинків")
         return data.keys().asSequence().toList().sortedWith(houseOrder)

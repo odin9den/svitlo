@@ -18,8 +18,7 @@ jobs:
         run: |
           git config user.name odin9den
           git config user.email odin9den@users.noreply.github.com
-          git fetch origin data || true
-          if git rev-parse --verify origin/data >/dev/null 2>&1; then git checkout -B data origin/data; else git checkout --orphan data; git rm -rfq .; fi
+          if git fetch -q origin data; then git checkout -B data FETCH_HEAD; else git checkout --orphan data; git rm -rfq .; fi
           cp /tmp/houses-kyiv.json houses-kyiv.json
           git add houses-kyiv.json
           git diff --cached --quiet || git commit -qm "houses-kyiv $(date -u +%F)"

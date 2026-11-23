@@ -21,18 +21,50 @@ import org.json.JSONObject
  * браузер, після чого ми забираємо скрипт з графіком і робимо запит черги.
  */
 object WebFetcher {
-    class Bridge(private val result: CompletableDeferred<Pair<String, String?>>) {
+    class Bridge {
+        @Volatile var result: CompletableDeferred<Pair<String, String?>>? = null
+
         @JavascriptInterface
         fun done(script: String, ajax: String) {
-            result.complete(script to ajax.ifBlank { null })
+            result?.complete(script to ajax.ifBlank { null })
         }
     }
 
+    /**
+     * «Теплий» WebView: сторінка ДТЕК лишається відкритою кілька хвилин, і наступні запити
+     * (будинки, інша адреса) робляться в ній за секунду, без нового 30-секундного завантаження.
+     */
+    private const val WARM_MS = 3 * 60_000L
+    private val handler = Handler(Looper.getMainLooper())
+    private var warm: WebView? = null
+    private var warmBridge: Bridge? = null
+    private var warmRegion: Region? = null
+    private var warmAt = 0L
+    private val cool = Runnable { dropWarm() }
+
+    private fun dropWarm() {
+        warm?.run { stopLoading(); destroy() }
+        warm = null
+        warmBridge = null
+        warmRegion = null
+    }
+
+    /**
+     * @param reuse можна взяти вже відкриту сторінку (для будинків і довідників).
+     *              Для графіка — завжди свіже завантаження.
+     */
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun fetch(ctx: Context, region: Region, query: List<Pair<String, String>>): Pair<String, String?> = withContext(Dispatchers.Main) {
+    suspend fun fetch(
+        ctx: Context, region: Region, query: List<Pair<String, String>>, reuse: Boolean = false,
+    ): Pair<String, String?> = withContext(Dispatchers.Main) {
         val result = CompletableDeferred<Pair<String, String?>>()
-        val handler = Handler(Looper.getMainLooper())
-        val wv = WebView(ctx.applicationContext)
+        val reusing = reuse && warm != null && warmRegion == region &&
+            System.currentTimeMillis() - warmAt < WARM_MS
+        if (!reusing) dropWarm()
+        handler.removeCallbacks(cool)
+        val wv = if (reusing) warm!! else WebView(ctx.applicationContext)
+        val bridge = if (reusing) warmBridge!! else Bridge()
+        bridge.result = result
         var lastInfo = ""
 
         // Порожній запит — потрібна лише сторінка (довідник вулиць)
@@ -78,27 +110,40 @@ object WebFetcher {
             }
         }
 
-        CookieManager.getInstance().setAcceptCookie(true)
-        wv.settings.javaScriptEnabled = true
-        wv.settings.domStorageEnabled = true
-        wv.settings.blockNetworkImage = true
-        wv.addJavascriptInterface(Bridge(result), "SvitloBridge")
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                handler.removeCallbacks(check)
-                handler.postDelayed(check, 500)
+        if (reusing) {
+            handler.post(check)
+        } else {
+            CookieManager.getInstance().setAcceptCookie(true)
+            wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.settings.blockNetworkImage = true
+            wv.addJavascriptInterface(bridge, "SvitloBridge")
+            wv.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    handler.removeCallbacks(check)
+                    handler.postDelayed(check, 500)
+                }
             }
+            wv.loadUrl("${region.base}/ua/shutdowns")
         }
-        wv.loadUrl("${region.base}/ua/shutdowns")
 
+        var ok = false
         try {
-            withTimeout(45_000) { result.await() }
+            withTimeout(if (reusing) 20_000 else 45_000) { result.await() }.also { ok = true }
         } catch (e: TimeoutCancellationException) {
             error("ДТЕК не віддав графік (${lastInfo.ifBlank { "немає відповіді" }})")
         } finally {
             handler.removeCallbacks(check)
-            wv.stopLoading()
-            wv.destroy()
+            bridge.result = null
+            if (ok) {
+                // Тримаємо сторінку відкритою ще кілька хвилин
+                if (!reusing) {
+                    warm = wv; warmBridge = bridge; warmRegion = region; warmAt = System.currentTimeMillis()
+                }
+                handler.postDelayed(cool, WARM_MS)
+            } else {
+                if (reusing) dropWarm() else { wv.stopLoading(); wv.destroy() }
+            }
         }
     }
 }

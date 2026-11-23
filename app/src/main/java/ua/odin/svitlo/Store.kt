@@ -132,6 +132,17 @@ object Store {
 
     private val ukCollator = java.text.Collator.getInstance(java.util.Locale.forLanguageTag("uk"))
 
+    @Volatile private var housesCache: JSONObject? = null
+
+    /** Будинки вулиці Києва з вкладеного довідника (null — довідника або вулиці немає). */
+    fun bundledHouses(ctx: Context, street: String): List<String>? {
+        val all = housesCache ?: runCatching {
+            JSONObject(ctx.assets.open("houses-kyiv.json").bufferedReader().use { it.readText() })
+        }.getOrNull()?.also { housesCache = it } ?: return null
+        val a = all.optJSONArray(street) ?: return null
+        return (0 until a.length()).map { a.getString(it) }.takeIf { it.isNotEmpty() }
+    }
+
     /** «м. Бровари», «с. Гатне», «Броварська ТГ» — сортуємо за самою назвою, за українською абеткою. */
     fun cities(ctx: Context): List<String> {
         val prefix = Regex("^(м|с|смт|сел|с-ще)\\.\\s*")

@@ -55,6 +55,8 @@ jobs:
         run: |
           mkdir -p app/src/main/assets
           python3 .github/fetch-streets.py app/src/main/assets
+          # Будинки Києва — з гілки data (їх щотижня оновлює workflow houses.yml)
+          git fetch -q --depth 1 origin data && git show FETCH_HEAD:houses-kyiv.json > app/src/main/assets/houses-kyiv.json || rm -f app/src/main/assets/houses-kyiv.json
           ls -la app/src/main/assets
 
       - name: Build

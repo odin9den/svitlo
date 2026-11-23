@@ -248,10 +248,23 @@ class MainActivity : ComponentActivity() {
         fillForm(if (adding) null else Store.active(this))
         settings.visibility = View.VISIBLE
         settingsToggle.text = "Адреса й налаштування  ▴"
+        prewarm()
         if (adding) {
             // У режимі додавання налаштування нагадувань не заважають
             findViewById<View>(R.id.extra_settings).visibility = View.GONE
             settings.post { findViewById<android.widget.ScrollView>(R.id.scroll)?.smoothScrollTo(0, settingsToggle.top) }
+        }
+    }
+
+    /** Поки людина вводить вулицю, тихо відкриваємо сторінку ДТЕК — будинки потім прийдуть за секунду. */
+    private var warmed = 0L
+    private fun prewarm() {
+        val now = System.currentTimeMillis()
+        if (now - warmed < 2 * 60_000L) return
+        warmed = now
+        val region = formRegion
+        lifecycleScope.launch {
+            runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, region) } }
         }
     }
 
@@ -276,6 +289,8 @@ class MainActivity : ComponentActivity() {
             house.isEnabled = false
             house.hint = "Спершу оберіть вулицю"
             applyRegionUi()
+            warmed = 0L
+            prewarm()
         }
         city.setOnItemClickListener { parent, _, pos, _ ->
             city.setText(parent.getItemAtPosition(pos) as String, false)
@@ -286,8 +301,12 @@ class MainActivity : ComponentActivity() {
             street.requestFocus()
         }
         // Порожнє поле — показуємо весь список, щоб можна було гортати
+        street.setOnFocusChangeListener { _, f -> if (f) prewarm() }
+        city.setOnFocusChangeListener { _, f ->
+            if (f) prewarm()
+            if (f && city.text.isBlank() && city.adapter != null) city.showDropDown()
+        }
         city.setOnClickListener { if (city.text.isBlank() && city.adapter != null) city.showDropDown() }
-        city.setOnFocusChangeListener { _, f -> if (f && city.text.isBlank() && city.adapter != null) city.showDropDown() }
         street.setOnItemClickListener { parent, _, pos, _ ->
             val s = parent.getItemAtPosition(pos) as String
             house.setText("", false)
