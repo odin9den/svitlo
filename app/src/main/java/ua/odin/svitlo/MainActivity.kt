@@ -343,6 +343,8 @@ class MainActivity : ComponentActivity() {
             city.setAdapter(ContainsAdapter(this, list))
             return
         }
+        // Форма закрита — довідник прийде разом з графіком, окремо не качаємо
+        if (settings.visibility != View.VISIBLE) return
         city.hint = "Завантажую населені пункти…"
         lifecycleScope.launch {
             val r = runCatching { withContext(Dispatchers.IO) { DtekClient.refreshStreets(this@MainActivity, Region.OBLAST) } }
