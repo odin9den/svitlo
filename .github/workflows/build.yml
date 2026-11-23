@@ -53,10 +53,11 @@ jobs:
 
       - name: Bundle DTEK street lists
         run: |
-          mkdir -p app/src/main/assets
-          python3 .github/fetch-streets.py app/src/main/assets
-          # Будинки Києва — з гілки data (їх щотижня оновлює workflow houses.yml)
-          git fetch -q --depth 1 origin data && git show FETCH_HEAD:houses-kyiv.json > app/src/main/assets/houses-kyiv.json || rm -f app/src/main/assets/houses-kyiv.json
+          mkdir -p app/src/main/assets /tmp/data
+          # Запасні копії довідників і будинки Києва — з гілки data (щотижня оновлює houses.yml)
+          git fetch -q --depth 1 origin data && git archive FETCH_HEAD | tar -x -C /tmp/data || true
+          python3 .github/fetch-streets.py app/src/main/assets /tmp/data
+          cp /tmp/data/houses-kyiv.json app/src/main/assets/ 2>/dev/null || true
           ls -la app/src/main/assets
 
       - name: Build

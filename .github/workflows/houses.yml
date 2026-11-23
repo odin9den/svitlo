@@ -13,13 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Crawl
-        run: python3 .github/crawl-houses.py /tmp/houses-kyiv.json
+        run: |
+          mkdir -p /tmp/out
+          python3 .github/fetch-streets.py /tmp/out || true
+          python3 .github/crawl-houses.py /tmp/out/houses-kyiv.json
       - name: Save to data branch
         run: |
           git config user.name odin9den
           git config user.email odin9den@users.noreply.github.com
           if git fetch -q origin data; then git checkout -B data FETCH_HEAD; else git checkout --orphan data; git rm -rfq .; fi
-          cp /tmp/houses-kyiv.json houses-kyiv.json
-          git add houses-kyiv.json
+          cp /tmp/out/*.json .
+          git add *.json
           git diff --cached --quiet || git commit -qm "houses-kyiv $(date -u +%F)"
           git push origin data

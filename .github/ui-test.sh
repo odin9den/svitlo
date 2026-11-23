@@ -67,13 +67,18 @@ tap_text "Хрещатик"; sleep 25; shot 09-switched-kyiv
 tap_text "+ Адреса"; sleep 2
 tap_id region; sleep 2
 shot 10a-regions
-tap_text "Одеська область"; sleep 15
+adb shell input tap 310 2005; sleep 15   # «Одеська область» у списку
 shot 10-add-form
 tap_id city; sleep 1
 sleep 3; shot 10b-city-dropdown
 adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Адреса й налаштування"; sleep 2
 adb shell input swipe 540 600 540 1900 300; sleep 1; adb shell input swipe 540 600 540 1900 300; sleep 1
+# Адреса в Одесі (третій сайт ДТЕК)
+adb shell am force-stop $P
+adb shell "am start -W -n $P/.MainActivity --es region odesa --es city 'м. Одеса' --es street 'вул. Дерибасівська' --es house 1 --es name 'Одеса'"
+sleep 45
+shot 11-odesa
 # Повертаємо активну адресу в області, щоб у шторці був підпис «Робота»
 tap_text "Робота"; sleep 25
 
